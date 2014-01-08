@@ -15,7 +15,7 @@ open Reductionops
 open Evd
 
 (** returns exception Reduction.NotConvertible if not unifiable *)
-val the_conv_x     : ?ts:transparent_state -> env -> constr -> constr -> evar_map -> evar_map
+val the_conv_x     : ?eta:bool -> ?ts:transparent_state -> env -> constr -> constr -> evar_map -> evar_map
 val the_conv_x_leq : ?ts:transparent_state -> env -> constr -> constr -> evar_map -> evar_map
 
 (** The same function resolving evars by side-effect and

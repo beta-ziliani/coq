@@ -67,6 +67,7 @@ type glob_constr =
   | GSort of loc * glob_sort
   | GHole of (loc * hole_kind)
   | GCast of loc * glob_constr * glob_constr cast_type
+  | GRun of (loc * glob_constr) (*BETA*)
 
 and glob_decl = name * binding_kind * glob_constr option * glob_constr
 
@@ -144,6 +145,8 @@ let map_glob_constr_left_to_right f = function
       let comp2 = match k with CastConv (k,t) -> CastConv (k, f t) | x -> x in
       GCast (loc,comp1,comp2)
   | (GVar _ | GSort _ | GHole _ | GRef _ | GEvar _ | GPatVar _) as x -> x
+  | GRun (loc,c) -> (*BETA*)
+      GRun (loc, f c)
 
 let map_glob_constr = map_glob_constr_left_to_right
 
@@ -205,6 +208,8 @@ let fold_glob_constr f acc =
 	Array.fold_left fold (Array.fold_left fold acc tyl) bv
     | GCast (_,c,k) -> fold (match k with CastConv (_, t) -> fold acc t | CastCoerce -> acc) c
     | (GSort _ | GHole _ | GRef _ | GEvar _ | GPatVar _) -> acc
+    | GRun (_,c) -> (*BETA*)
+      fold acc c
 
   and fold_pattern acc (_,idl,p,c) = fold acc c
 
@@ -244,6 +249,8 @@ let occur_glob_constr id =
           idl bl tyl bv)
     | GCast (loc,c,k) -> (occur c) or (match k with CastConv (_, t) -> occur t | CastCoerce -> false)
     | (GSort _ | GHole _ | GRef _ | GEvar _ | GPatVar _) -> false
+    | GRun (loc,c) -> (*BETA*)
+        occur c
 
   and occur_pattern (loc,idl,p,c) = not (List.mem id idl) & (occur c)
 
@@ -302,6 +309,8 @@ let free_glob_vars  =
     | GCast (loc,c,k) -> let v = vars bounded vs c in
 	(match k with CastConv (_,t) -> vars bounded v t | _ -> v)
     | (GSort _ | GHole _ | GRef _ | GEvar _ | GPatVar _) -> vs
+    | GRun (_, c) -> (*BETA*) 
+        vars bounded vs c
 
   and vars_pattern bounded vs (loc,idl,p,c) =
     let bounded' = List.fold_right Idset.add idl bounded  in
@@ -334,6 +343,7 @@ let loc_of_glob_constr = function
   | GSort (loc,_) -> loc
   | GHole (loc,_) -> loc
   | GCast (loc,_,_) -> loc
+  | GRun (loc, _) -> loc (*BETA*) 
 
 (**********************************************************************)
 (* Conversion from glob_constr to cases pattern, if possible            *)

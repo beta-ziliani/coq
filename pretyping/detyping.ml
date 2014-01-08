@@ -677,6 +677,10 @@ let rec subst_glob_constr subst raw =
 	     let r1' = subst_glob_constr subst r1 in
 	       if r1' == r1 then raw else GCast (loc,r1',k))
 
+  | GRun (loc, r) -> (*BETA*)
+    let r' = subst_glob_constr subst r in
+    if r' == r then raw else GRun (loc, r')
+
 (* Utilities to transform kernel cases to simple pattern-matching problem *)
 
 let simple_cases_matrix_of_branches ind brs =

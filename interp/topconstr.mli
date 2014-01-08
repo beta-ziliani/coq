@@ -45,6 +45,8 @@ type aconstr =
   | AHole of Evd.hole_kind
   | APatVar of patvar
   | ACast of aconstr * aconstr cast_type
+  (* BETA *)
+  | ARun of aconstr
 
 type scope_name = string
 
@@ -165,6 +167,7 @@ type constr_expr =
   | CGeneralization of loc * binding_kind * abstraction_kind option * constr_expr
   | CPrim of loc * prim_token
   | CDelimiters of loc * string * constr_expr
+  | CRun of loc * constr_expr (*BETA*)
 
 and fix_expr =
     identifier located * (identifier located option * recursion_order_expr) * local_binder list * constr_expr * constr_expr
@@ -272,3 +275,8 @@ val patntn_loc :
 (** For cases pattern parsing errors *)
 
 val error_invalid_pattern_notation : Util.loc -> 'a
+
+val compare_glob_constr : (Glob_term.glob_constr -> Glob_term.glob_constr -> bool) ->
+           (Names.name -> 'a) ->
+           Glob_term.glob_constr -> Glob_term.glob_constr -> bool
+

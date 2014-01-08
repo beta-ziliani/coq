@@ -1351,6 +1351,7 @@ let internalize sigma globalenv env allow_patvar lvar c =
 	GCast (loc,intern env c1, CastConv (k, intern_type env c2))
     | CCast (loc, c1, CastCoerce) ->
 	GCast (loc,intern env c1, CastCoerce)
+    | CRun (loc, c) -> GRun (loc, intern env c) (*BETA*)
 
   and intern_type env = intern (set_type_scope env)
 

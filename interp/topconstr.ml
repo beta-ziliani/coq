@@ -48,6 +48,8 @@ type aconstr =
   | AHole of Evd.hole_kind
   | APatVar of patvar
   | ACast of aconstr * aconstr cast_type
+  (* BETA *)
+  | ARun of aconstr
 
 type scope_name = string
 
@@ -155,6 +157,8 @@ let glob_constr_of_aconstr_with_binders loc g f e = function
   | AHole x  -> GHole (loc,x)
   | APatVar n -> GPatVar (loc,(false,n))
   | ARef x -> GRef (loc,x)
+  (* BETA *)
+  | ARun x -> GRun (loc, f e x)
 
 let rec glob_constr_of_aconstr loc x =
   let rec aux () x =
@@ -200,6 +204,7 @@ let compare_glob_constr f add t1 t2 = match t1,t2 with
   | GSort (_,s1), GSort (_,s2) -> s1 = s2
   | GLetIn (_,na1,b1,c1), GLetIn (_,na2,b2,c2) when na1 = na2 ->
       on_true_do (f b1 b2 & f c1 c2) add na1
+  | GRun (_, e1), GRun (_, e2) -> (*BETA*) f e1 e2
   | (GCases _ | GRec _
     | GPatVar _ | GEvar _ | GLetTuple _ | GIf _ | GCast _),_
   | _,(GCases _ | GRec _
@@ -208,6 +213,7 @@ let compare_glob_constr f add t1 t2 = match t1,t2 with
   | (GRef _ | GVar _ | GApp _ | GLambda _ | GProd _
     | GHole _ | GSort _ | GLetIn _), _
       -> false
+  | _, _ -> false
 
 let rec eq_glob_constr t1 t2 = compare_glob_constr eq_glob_constr (fun _ -> ()) t1 t2
 
@@ -323,7 +329,8 @@ let aconstr_and_vars_of_glob_constr a =
   | GPatVar (_,(_,n)) -> APatVar n
   | GEvar _ ->
       error "Existential variables not allowed in notations."
-
+  (*BETA*)
+  | GRun (_,c) -> ARun (aux c)
   in
   let t = aux a in
   (* Side effect *)
@@ -886,6 +893,7 @@ type constr_expr =
   | CGeneralization of loc * binding_kind * abstraction_kind option * constr_expr
   | CPrim of loc * prim_token
   | CDelimiters of loc * string * constr_expr
+  | CRun of loc * constr_expr (*BETA*)
 
 and fix_expr =
     identifier located * (identifier located option * recursion_order_expr) * local_binder list * constr_expr * constr_expr
@@ -957,6 +965,7 @@ let constr_loc = function
   | CGeneralization (loc,_,_,_) -> loc
   | CPrim (loc,_) -> loc
   | CDelimiters (loc,_,_) -> loc
+  | CRun (loc, _) -> loc (*BETA*)
 
 let cases_pattern_expr_loc = function
   | CPatAlias (loc,_,_) -> loc
@@ -1076,6 +1085,7 @@ let fold_constr_expr_with_binders g f n acc = function
 	  (fold_local_binders g f n acc t lb) c lb) l acc
   | CCoFix (loc,_,_) ->
       Pp.msg_warn "Capture check in multiple binders not done"; acc
+  | CRun (_, c) -> f n acc c (*BETA*)
 
 let free_vars_of_constr_expr c =
   let rec aux bdvars l = function
@@ -1240,6 +1250,7 @@ let map_constr_expr_with_binders g f e = function
         let e'' = List.fold_left (fun e ((_,id),_,_,_) -> g id e) e' dl in
         let d' = f e'' d in
         (id,bl',t',d')) dl)
+  | CRun (loc, c) -> CRun (loc, f e c) (*BETA*)
 
 (* Used in constrintern *)
 let rec replace_vars_constr_expr l = function

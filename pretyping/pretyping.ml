@@ -695,6 +695,9 @@ module Pretyping_F (Coercion : Coercion.S) = struct
 		  { uj_val = v; uj_type = tval }
 	in inh_conv_coerce_to_tycon loc env evdref cj tycon
 
+    | GRun (loc, c) -> (*BETA*)
+        Run.pretype_run pretype inh_conv_coerce_to_tycon tycon env evdref lvar loc c
+
   (* [pretype_type valcon env evdref lvar c] coerces [c] into a type *)
   and pretype_type valcon env evdref lvar = function
     | GHole loc ->

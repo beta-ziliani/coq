@@ -556,6 +556,10 @@ module SubtacPretyping_F (Coercion : Coercion.S) = struct
 	in
 	  inh_conv_coerce_to_tycon loc env evdref cj tycon
 
+(* BETA *)
+     | GRun (loc, c) ->
+        Run.pretype_run pretype inh_conv_coerce_to_tycon tycon env evdref lvar loc c	 
+
   (* [pretype_type valcon env evdref lvar c] coerces [c] into a type *)
   and pretype_type valcon env evdref lvar = function
     | GHole loc ->

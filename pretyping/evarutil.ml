@@ -1662,9 +1662,25 @@ let rec invert_definition conv_algo choose env evd (evk,argsv as ev) rhs =
 	  (* Evar/Rigid problem (or assimilated if not normal): we "imitate" *)
 	    map_constr_with_full_binders (fun d (env,k) -> push_rel d env, k+1)
 	      imitate envk t in
-
+  (* BETA *)
+  let fast rhs = 
+    let filter_ctxt = evar_filtered_context evi in
+    let names = ref Idset.empty in
+    let rec is_id_subst ctxt s =
+       match ctxt, s with
+         | ((id, _, _) :: ctxt'), (c :: s') ->
+           names := Idset.add id !names;
+           isVarId id c && is_id_subst ctxt' s'
+         | [], [] -> true
+         | _ -> false in
+    is_id_subst filter_ctxt (Array.to_list argsv) &&
+    closed0 rhs &&
+    Idset.subset (collect_vars rhs) !names in
+ 
   let rhs = whd_beta evd rhs (* heuristic *) in
-  let body = imitate (env,0) rhs in
+  let body = if fast rhs then nf_evar evd rhs
+             else imitate (env,0) rhs
+  in
   (!evdref,body)
 
 (* [define] tries to solve the problem "?ev[args] = rhs" when "?ev" is

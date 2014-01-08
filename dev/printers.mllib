@@ -93,6 +93,8 @@ Indrec
 Coercion
 Unification
 Cases
+Simpleunify
+Run
 Pretyping
 Declaremods
 
