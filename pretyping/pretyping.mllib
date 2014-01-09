@@ -26,6 +26,7 @@ Detyping
 Indrec
 Cases
 Simpleunify
+Munify
 Run
 Pretyping
 

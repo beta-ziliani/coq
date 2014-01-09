@@ -55,7 +55,8 @@ Inductive Reduction : Type :=
 
 Inductive Unification : Type :=
 | UniRed : Unification
-| UniSimpl : Unification.
+| UniSimpl : Unification
+| UniMuni : Unification.
 
 
 Inductive Mtac : Type -> Prop :=
@@ -160,6 +161,10 @@ Notation "p => [ H ] b" := (base p%core (fun H=>b%core) UniRed)
   (no associativity, at level 201, H at next level) : mtac_patt_scope. 
 Notation "p '=s>' b" := (base p%core (fun _=>b%core) UniSimpl) 
   (no associativity, at level 201) : mtac_patt_scope. 
+Notation "p =m> b" := (base p%core (fun _=>b%core) UniMuni) 
+  (no associativity, at level 201) : mtac_patt_scope. 
+Notation "p =m> [ H ] b" := (base p%core (fun H=>b%core) UniMuni) 
+  (no associativity, at level 201, H at next level) : mtac_patt_scope. 
 Notation "'_' => b " := (tele (fun x=> base x (fun _=>b%core) UniRed)) 
   (at level 201, b at next level) : mtac_patt_scope.
 

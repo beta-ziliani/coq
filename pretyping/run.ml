@@ -91,10 +91,12 @@ module UnificationStrategy = struct
   let mkUni = fun s -> lazy (MtacNames.mkConstr s)
   let uniRed = mkUni "UniRed"
   let uniSimpl = mkUni "UniSimpl"
+  let uniMuni = mkUni "UniMuni"
 
   let test = fun r c -> eq_constr (Lazy.force r) c
   let isUniRed = test uniRed
   let isUniSimpl = test uniSimpl
+  let isUniMuni = test uniMuni
 
   let find_pbs sigma evars =
     let (_, pbs) = extract_all_conv_pbs sigma in
@@ -113,6 +115,10 @@ module UnificationStrategy = struct
       let b, sigma = Simpleunify.unify env !rsigma t2 t1 in
       rsigma := sigma;
       b && List.length (find_pbs sigma evars) = 0
+    else if isUniMuni strategy then
+      let b, sigma = Munify.unify Names.full_transparent_state env !rsigma t2 t1 in
+      rsigma := sigma;
+      b
     else
       Exceptions.raise Exceptions.unknown_reduction_strategy 
 
