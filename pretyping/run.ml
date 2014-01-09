@@ -13,6 +13,8 @@ open Util
 open Evarconv
 open Libnames
 
+open Munify
+
 let reduce_value = Tacred.compute
 
 module Constr = struct

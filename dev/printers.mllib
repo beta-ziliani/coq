@@ -94,6 +94,7 @@ Coercion
 Unification
 Cases
 Simpleunify
+Munify
 Run
 Pretyping
 Declaremods

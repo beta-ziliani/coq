@@ -410,12 +410,12 @@ let invert nc t s args =
 	else
 	  return (mkRel (nclength+argslength - j))
     | Rel j when j > i-> 
-	find_unique_rel (j-i) s >>= fun k -> 
-        if j < nclength then
+	find_unique_rel (j-i) sargs >>= fun k -> 
+        if k < nclength then
 	  let (name, _, _) = List.nth nc k in
 	  return (mkVar name)
 	else
-	  return (mkRel (nclength+argslength - j))
+	  return (mkRel (nclength+argslength - k))
     | _ -> 
 	try Some (map_constr_with_binders succ (fun i c -> 
 	    match invert' c i with
@@ -591,14 +591,14 @@ and try_step conv_t ts env sigma0 (c, l as t) (c', l' as t') =
       transp_matchR ts env sigma0 id2 l' (applist t) (unify ~conv_t) var_value
   | _, Const c2 when const_is_def ts env c2 ->
       transp_matchR ts env sigma0 c2 l' (applist t) (unify ~conv_t) const_value
-      
+(*      
   (* Lam-EtaL *)
   | Lambda (name, t1, c1), _ when l = [] ->
       eta_match ts env sigma0 (name, t1, c1) t'
   (* Lam-EtaR *)
   | _, Lambda (name, t1, c1) when l' = [] ->
       eta_match ts env sigma0 (name, t1, c1) t
-
+*)
   | _, _ -> reduce_iota_and_unify ts env sigma0 t t'
 
 and reduce_iota_and_unify ts env sigma (_, l1 as t1) (_, l2 as t2) =
