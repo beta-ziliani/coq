@@ -20,7 +20,7 @@ val intersect : Term.constr array -> Term.constr array -> int list option
 
 val invert :  (Names.identifier * 'a * 'b) list ->
            Term.constr ->
-           Term.types list -> Term.types list -> Term.constr option
+           Term.types list -> Term.types list -> (Term.constr * int list Util.Intmap.t) option
 
 val fill_lambdas : Environ.env ->
            Evd.evar_map -> Term.constr list -> Term.constr -> Term.constr

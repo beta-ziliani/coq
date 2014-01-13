@@ -20,16 +20,6 @@ let whd_head_evar_stack sigma c =
   whrec (c, [])
        
 
-
-let option_fold_right f l =
-  let rec fold_me l' =
-    match l' with
-    | [] -> Some []
-    | a :: l'' -> 
-	f a >>= fun b -> 
-	fold_me l'' >>= fun l''' -> return (b :: l''')
-  in fold_me l
-
 let option_fold_rightA f a =
   let a' = Array.copy a in
   let rec fold_me i =
@@ -110,7 +100,23 @@ let instantiate_restriction sigma ev rml =
       Some (v, Evd.define ev t sigma', rml')
     in res
 
+let omap f l =
+  let rec fold_me l' =
+    match l' with
+    | [] -> Some []
+    | a :: l'' -> 
+	f a >>= fun b -> 
+	fold_me l'' >>= fun l''' -> return (b :: l''')
+  in fold_me l
+
 *)
+
+let (>>=) opt f = 
+  match opt with
+  | Some(x) -> f x
+  | None -> None
+   
+let return x = Some x
 
 let ise_list2 evd f l1 l2 =
   let rec ise_list2 i l1 l2 =
@@ -136,12 +142,6 @@ let ise_array2 evd f v1 v2 =
   in
   allrec evd 0
 
-let (>>=) opt f = 
-  match opt with
-  | Some(x) -> f x
-  | None -> None
-   
-let return x = Some x
 
 let (&&=) opt f = 
   match opt with
@@ -401,30 +401,82 @@ let invert nc t s args =
   let sargs = s @ args in
   let nclength = List.length nc in
   let argslength = List.length args in
+  let map = ref Util.Intmap.empty in
   let rec invert' t i =
     match kind_of_term t with
     | Var id -> 
-	find_unique_var id sargs >>= fun j -> 
-        if j < nclength then
-	  let (name, _, _) = List.nth nc j in
-	  return (mkVar name)
-	else
-	  return (mkRel (nclength+argslength - j))
+      find_unique_var id sargs >>= fun j -> 
+      if j < nclength then
+	let (name, _, _) = List.nth nc j in
+	return (mkVar name)
+      else
+	return (mkRel (nclength+argslength - j))
     | Rel j when j > i-> 
-	find_unique_rel (j-i) sargs >>= fun k -> 
-        if k < nclength then
-	  let (name, _, _) = List.nth nc k in
-	  return (mkVar name)
-	else
-	  return (mkRel (nclength+argslength - k))
+      find_unique_rel (j-i) sargs >>= fun k -> 
+      if k < nclength then
+	let (name, _, _) = List.nth nc k in
+	return (mkVar name)
+      else
+	return (mkRel (nclength+argslength - k))
+          
+    | Evar (ev, evargs) ->
+      begin
+      let f (j : int) c  = 
+        match invert' c i with
+          | Some c' -> c'
+          | _ -> 
+            if isVar c || isRel c then
+              begin
+              (if not (Util.Intmap.mem ev !map) then
+                map := Util.Intmap.add ev [j] !map
+              else
+                map := Util.Intmap.add ev (j :: Util.Intmap.find ev !map) !map)
+                ; c
+              end
+            else
+              raise Exit
+      in
+      try return (mkEvar (ev, Array.mapi f evargs))
+      with Exit -> None
+      end
     | _ -> 
-	try Some (map_constr_with_binders succ (fun i c -> 
-	    match invert' c i with
-	    | Some c' -> c'
-	    | None -> raise Exit) i t)
-	with Exit -> None
+      try return (map_constr_with_binders succ (fun i c -> 
+	match invert' c i with
+	  | Some c' -> c'
+	  | None -> raise Exit) i t)
+      with Exit -> None
   in
-  invert' t 0
+  invert' t 0 >>= fun c' ->
+  return (c', !map)
+
+(** removes the positions in the list *)
+let remove l pos =
+  let rec remove' i l =
+    match l with
+      | [] -> []
+      | (x :: s) -> 
+        if List.mem i pos then
+          remove' (i+1) s
+        else
+          (x :: remove' (i+1) s)
+  in remove' 0 l
+
+(** ev is the evar and plist the indices to prune.  from ?ev : T[env]
+    it creates a new evar ?ev' with a shorter context env' such that
+    ?ev := ?ev'[id_env'] *)
+let prune evd (ev, plist) =
+  let evi = Evd.find_undefined evd ev in
+  let env = Evd.evar_filtered_context evi in
+  let env' = remove env plist in
+  let env_val' = (List.fold_right Environ.push_named_context_val env' 
+                    Environ.empty_named_context_val) in
+  let evd', ev' = Evarutil.new_evar_instance env_val' evd 
+    (Evd.evar_concl evi) (Array.to_list (id_substitution env')) in
+  Evd.define ev ev' evd'
+
+let prune_all map evd =
+  List.fold_left prune evd (Util.Intmap.bindings map)
+
 
 (* given a list of arguments [x1 .. xn] with types [A1 .. An] and a
    [body] with free indices [1 .. n], it returns [fun x1 : A1 => .. =>
@@ -686,13 +738,14 @@ and instantiate' ts conv_t env sigma0 (ev, subs as uv) args (h, args' as t) =
   let res = 
     let t = applist t in
     let subsl = Array.to_list subs in
-    invert nc (Reductionops.nf_evar sigma0 t) subsl args >>= fun t' ->
-    let t' = fill_lambdas env sigma0 args t' in
+    invert nc (Reductionops.nf_evar sigma0 t) subsl args >>= fun (t', map) ->
+    let sigma1 = prune_all map sigma0 in
+    let t' = fill_lambdas env sigma1 args t' in
     let t'' = Evd.instantiate_evar nc t' subsl in
-    let ty' = Retyping.get_type_of env sigma0 t'' in
-    let ty = Evd.existential_type sigma0 uv in
+    let ty' = Retyping.get_type_of env sigma1 t'' in
+    let ty = Evd.existential_type sigma1 uv in
     Some (
-      unify ~conv_t:Reduction.CUMUL ts env sigma0 ty' ty &&= fun sigma2 ->
+      unify ~conv_t:Reduction.CUMUL ts env sigma1 ty' ty &&= fun sigma2 ->
 	let t' = Reductionops.nf_evar sigma2 t' in
 	if Termops.occur_meta t' then 
 	  (Printf.printf "hay meta" ; err sigma2)
