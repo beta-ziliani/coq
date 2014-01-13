@@ -567,14 +567,14 @@ and conv_record trs env evd (c,bs,(params,params1),(us,us2),(ts,ts1),c1,(n,t2)) 
   ise_and evd'
     [(fun i ->
        ise_list2 i
-         (fun i x1 x -> evar_conv_x trs env i CONV x1 (substl ks x))
+         (fun i x1 x -> (* evar_conv_x *) Munify.unify_evar_conv trs env i x1 (substl ks x))
          params1 params);
     (fun i ->
       ise_list2 i
-        (fun i u1 u -> evar_conv_x trs env i CONV u1 (substl ks u))
+        (fun i u1 u -> (* evar_conv_x *) Munify.unify_evar_conv trs env i u1 (substl ks u))
         us2 us);
-    (fun i -> evar_conv_x trs env i CONV c1 (applist (c,(List.rev ks))));
-    (fun i -> ise_list2 i (fun i -> evar_conv_x trs env i CONV) ts ts1)]
+    (fun i -> (* evar_conv_x *) Munify.unify_evar_conv trs env i c1 (applist (c,(List.rev ks))));
+    (fun i -> ise_list2 i (fun i -> (* evar_conv_x *) Munify.unify_evar_conv trs env i) ts ts1)]
 
 (* getting rid of the optional argument rhs_is_already_stuck *)
 let evar_eqappr_x ts env evd pbty appr1 appr2 =

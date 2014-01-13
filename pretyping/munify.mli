@@ -1,5 +1,16 @@
 open Term
 
+val unify : ?conv_t:Evd.conv_pb ->
+           Names.transparent_state ->
+           Environ.env ->
+           Evd.evar_map -> Term.types -> Term.types -> bool * Evd.evar_map
+
+val unify_evar_conv : ?conv_t:Evd.conv_pb ->
+           Names.transparent_state ->
+           Environ.env ->
+           Evd.evar_map -> Term.types -> Term.types -> Evd.evar_map * bool
+
+
 (* DEBUG *)
 val id_substitution : Sign.named_context -> Term.constr array
 
@@ -13,11 +24,6 @@ val invert :  (Names.identifier * 'a * 'b) list ->
 
 val fill_lambdas : Environ.env ->
            Evd.evar_map -> Term.constr list -> Term.constr -> Term.constr
-
-val unify : ?conv_t:Evd.conv_pb ->
-           Names.transparent_state ->
-           Environ.env ->
-           Evd.evar_map -> Term.types -> Term.types -> bool * Evd.evar_map
 
 val try_step :  Evd.conv_pb ->
            Names.transparent_state ->
@@ -41,3 +47,19 @@ val instantiate' :
            Evd.evar_map ->
            Term.existential * Term.types list ->
            Term.constr * Term.types list -> bool * Evd.evar_map
+
+val conv_record : Names.transparent_state ->
+           Environ.env ->
+           Evd.evar_map ->
+           Term.constr * Term.types list ->
+           Term.constr * Term.types list -> bool * Evd.evar_map
+
+
+val check_conv_record : Term.constr * 'a list ->
+           Term.constr * Term.types list ->
+           Term.constr * Term.constr list * (Term.constr list * 'a list) *
+           (Term.constr list * Term.types list) *
+           ('a list * Term.types list) * 'a * (int * Term.constr)
+
+val ise_list2 :   'a ->
+           ('a -> 'b -> 'c -> bool * 'a) -> 'b list -> 'c list -> bool * 'a

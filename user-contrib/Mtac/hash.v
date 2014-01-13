@@ -13,7 +13,7 @@ Module ListMtactics.
   Definition inlist {A} (x : A) :=
     mfix f (s : list A) :=
       mmatch s with
-      | [l r] l ++ r =>
+      | [l r] l ++ r =m>
         mtry 
           il <- f l;
           ret (in_or_app l r x (or_introl il))
@@ -21,26 +21,26 @@ Module ListMtactics.
           ir <- f r;
           ret (in_or_app l r x (or_intror ir))
         end
-      | [s'] (x :: s') => ret (in_eq _ _)
-      | [y s'] (y :: s') =>
+      | [s'] (x :: s') =m> ret (in_eq _ _)
+      | [y s'] (y :: s') =m>
         r <- f s';
         ret (in_cons y _ _ r)
-      | _ => raise NotFound
+      | _ =m> raise NotFound
       end.
     
   Program
   Definition find {A} {B : A -> Type} (x : A) :=
     mfix f (s : list (sigT B)) :=
       mmatch s with
-      | [l r] l ++ r => 
+      | [l r] l ++ r =m> 
         mtry 
           f l
         with NotFound =>
           f r
         end
-      | [y s'] (existT B x y :: s') => ret y
-      | [y s'] (y :: s') => f s'
-      | _ => raise NotFound
+      | [y s'] (existT B x y :: s') =m> ret y
+      | [y s'] (y :: s') =m> f s'
+      | _ =m> raise NotFound
       end.
 
 End ListMtactics.

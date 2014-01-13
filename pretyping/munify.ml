@@ -1,4 +1,5 @@
 open Term
+open Recordops
 
 (* type direction = DLeft | DRight *)
 (*
@@ -425,10 +426,66 @@ let invert nc t s args =
   in
   invert' t 0
 
+(* given a list of arguments [x1 .. xn] with types [A1 .. An] and a
+   [body] with free indices [1 .. n], it returns [fun x1 : A1 => .. =>
+   fun xn : An => body].
+*)
 let fill_lambdas env sigma args body =
   List.fold_right (fun arg bdy-> 
     let ty = Retyping.get_type_of env sigma arg in
     mkLambda (Names.Anonymous, ty, bdy)) args body
+
+(* [check_conv_record (t1,l1) (t2,l2)] tries to decompose the problem
+   (t1 l1) = (t2 l2) into a problem
+
+     l1 = params1@c1::extra_args1
+     l2 = us2@extra_args2
+     (t1 params1 c1) = (proji params (c xs))
+     (t2 us2) = (cstr us)
+     extra_args1 = extra_args2
+
+   by finding a record R and an object c := [xs:bs](Build_R params v1..vn)
+   with vi = (cstr us), for which we know that the i-th projection proji
+   satisfies
+
+      (proji params (c xs)) = (cstr us)
+
+   Rem: such objects, usable for conversion, are defined in the objdef
+   table; practically, it amounts to "canonically" equip t2 into a
+   object c in structure R (since, if c1 were not an evar, the
+   projection would have been reduced) *)
+
+let check_conv_record (t1,l1) (t2,l2) =
+  try
+    let proji = Libnames.global_of_constr t1 in
+    let canon_s,l2_effective =
+      try
+	match kind_of_term t2 with
+	    Prod (_,a,b) -> (* assert (l2=[]); *)
+      	      if Termops.dependent (mkRel 1) b then raise Not_found
+	      else lookup_canonical_conversion (proji, Prod_cs),[a;Termops.pop b]
+	  | Sort s ->
+	      lookup_canonical_conversion
+		(proji, Sort_cs (family_of_sort s)),[]
+	  | _ ->
+	      let c2 = Libnames.global_of_constr t2 in
+		Recordops.lookup_canonical_conversion (proji, Const_cs c2),l2
+      with Not_found ->
+	lookup_canonical_conversion (proji, Default_cs),[]
+    in
+    let { o_DEF = c; o_INJ=n; o_TABS = bs;
+          o_TPARAMS = params; o_NPARAMS = nparams; o_TCOMPS = us } = canon_s in
+    let params1, c1, extra_args1 =
+      match Util.list_chop nparams l1 with
+	| params1, c1::extra_args1 -> params1, c1, extra_args1
+	| _ -> raise Not_found in
+    let us2,extra_args2 = Util.list_chop (List.length us) l2_effective in
+    c,bs,(params,params1),(us,us2),(extra_args1,extra_args2),c1,
+    (n,applist(t2,l2))
+  with Failure _ | Not_found ->
+    raise Not_found
+
+
 
 (* pre: c and c' are in whdnf with our definition of whd *)
 let rec unify ?(conv_t=Reduction.CONV) ts env sigma0 t t' =
@@ -441,21 +498,9 @@ let rec unify ?(conv_t=Reduction.CONV) ts env sigma0 t t' =
     let (c, l as tapp) = decompose_app t in
     let (c', l' as tapp') = decompose_app t' in
     match (kind_of_term c, kind_of_term c') with
-      (* Meta-Meta *)
-    | Evar (k1, _ as e1), Evar (k2, _ as e2) when k1 <> k2 ->
-      if k1 > k2 then
-	instantiate ts conv_t env sigma0 e1 l tapp' ||= fun _ ->
-	instantiate ts conv_t env sigma0 e2 l' tapp
-      else
-	instantiate ts conv_t env sigma0 e2 l' tapp ||= fun _ ->
-	instantiate ts conv_t env sigma0 e1 l tapp'
-
-    (* Meta-* *)
-    | Evar e, _ ->
-      instantiate ts conv_t env sigma0 e l tapp'
-    (* Meta-Swap *)
-    | _, Evar e ->
-      instantiate ts conv_t env sigma0 e l' tapp 
+    | Evar _, _ 
+    | _, Evar _ ->
+      one_is_meta ts conv_t env sigma0 tapp tapp'
 
     (* Prop-Same, Set-Same, Type-Same *)
     | Sort s1, Sort s2 -> 
@@ -520,27 +565,53 @@ let rec unify ?(conv_t=Reduction.CONV) ts env sigma0 t t' =
       ise_array2 sigma0 (fun i -> unify ts env i) tys1 tys2 &&= fun sigma1 ->
       ise_array2 sigma1 (fun i -> unify ts (Environ.push_rec_types recdef1 env) i) bds1 bds2
 
-    | _, _ when l <> [] && l' <> [] ->
-      let n = List.length l in
-      let m = List.length l' in
-      let nm = n -. m in
-      let mn = m -. n in
-      let l1, l2 = Util.list_chop nm l in
-      let l1', l2' = Util.list_chop mn l' in
+    | _, _  ->
       (
-	unify ~conv_t ts env sigma0 
-          (applist (c, l1)) (applist (c', l1')) &&= fun sigma1 ->
-        ise_list2 sigma1 (fun i -> unify ts env i) l2 l2'
-      ) 
-      ||= fun _ ->
+	if (isConst c || isConst c') && not (eq_constr c c') then
+	  try conv_record ts env sigma0 tapp tapp'
+	  with Not_found ->
+	    try conv_record ts env sigma0 tapp' tapp
+	    with Not_found -> err sigma0
+	else
+	  err sigma0
+      ) ||= fun _ ->
+      (
+	let n = List.length l in
+	let m = List.length l' in
+	if n = m && n > 0 then
+	  unify ~conv_t ts env sigma0 c c' &&= fun sigma1 ->
+          ise_list2 sigma1 (fun i -> unify ts env i) l l'
+	else
+	  err sigma0
+      ) ||= fun _ ->
       (
 	try_step conv_t ts env sigma0 tapp tapp'
       )
 
-    | _, _ when l = [] || l' = [] ->
-      try_step conv_t ts env sigma0 tapp tapp'     
-
-    | _, _ -> err sigma0
+and one_is_meta ts conv_t env sigma0 (c, l as t) (c', l' as t') =
+  if isEvar c && isEvar c' then
+    let (k1, s1 as e1), (k2, s2 as e2) = destEvar c, destEvar c' in
+    if k1 = k2 then
+      (* Meta-Same *)
+      unify_same env sigma0 k1 s1 s2 &&= fun sigma1 ->
+      ise_list2 sigma1 (fun i -> unify ts env i) l l'
+    else
+      (* Meta-Meta *)
+      if k1 > k2 then
+	instantiate ts conv_t env sigma0 e1 l t' ||= fun _ ->
+	instantiate ts conv_t env sigma0 e2 l' t
+      else
+	instantiate ts conv_t env sigma0 e2 l' t ||= fun _ ->
+	instantiate ts conv_t env sigma0 e1 l t'
+  else
+    (* Meta-InstL *)
+    if isEvar c then
+      let e1 = destEvar c in
+      instantiate ts conv_t env sigma0 e1 l t'
+    else
+      (* Meta-InstR *)
+      let e2 = destEvar c' in
+      instantiate ts conv_t env sigma0 e2 l' t 
 
 and try_step conv_t ts env sigma0 (c, l as t) (c', l' as t') =
   match (kind_of_term c, kind_of_term c') with
@@ -552,8 +623,8 @@ and try_step conv_t ts env sigma0 (c, l as t) (c', l' as t') =
 
   (* Lam-BetaR *)
   | _, Lambda (_, _, trm) when l' <> [] ->
-    let t2 = applist (subst1 (List.hd l) trm, List.tl l) in
-    let t1 = applist t' in
+    let t1 = applist t in
+    let t2 = applist (subst1 (List.hd l') trm, List.tl l') in
     unify ~conv_t ts env sigma0 t1 t2 
 
   (* Let-ZetaL *)
@@ -564,8 +635,8 @@ and try_step conv_t ts env sigma0 (c, l as t) (c', l' as t') =
 
   (* Let-ZetaR *)
   | _, LetIn (_, trm, _, body) ->
-    let t2 = applist (subst1 trm body, l) in
-    let t1 = applist t' in
+    let t1 = applist t in
+    let t2 = applist (subst1 trm body, l') in
     unify ~conv_t ts env sigma0 t1 t2
 
   (* Rigid-Same-Delta *)	    
@@ -648,20 +719,15 @@ and instantiate' ts conv_t env sigma0 (ev, subs as uv) args (h, args' as t) =
 (* by invariant, we know that ev is uninstantiated *)
 and instantiate ts conv_t env sigma 
     (ev, subs as evsubs) args (h, args' as t) =
-  if is_same_evar ev h then 
-    if List.length args = List.length args' then
-      unify_same env sigma ev subs (snd (destEvar h)) &&= fun sigma1 ->
-      ise_list2 sigma1 (fun i -> unify ts env i) args args'
-    else
-      err sigma
-  else if is_variable_subs subs then
+  if is_variable_subs subs then
     if is_variable_args args then
       instantiate' ts conv_t env sigma evsubs args t
-    else if should_try_fo args (h, args') then
-      (* Meta-FO *)
-      meta_fo ts env sigma (evsubs, args) (h, args')
-    else
-      err sigma
+    else 
+      if should_try_fo args (h, args') then
+	(* Meta-FO *)
+	meta_fo ts env sigma (evsubs, args) (h, args')
+      else
+	err sigma
   else
     err sigma
     
@@ -696,3 +762,25 @@ and eta_match ts env sigma0 (name, a, t1) (th, tl as t) =
   check_product ts env sigma0 ty (name, a) &&= fun sigma1 ->
   unify ts env' sigma1 t1 t'
 
+and conv_record trs env evd t t' =
+  let (c,bs,(params,params1),(us,us2),(ts,ts1),c1,(n,t2)) = check_conv_record t t' in
+  let (evd',ks,_) =
+    List.fold_left
+      (fun (i,ks,m) b ->
+	 if m=n then (i,t2::ks, m-1) else
+	 let dloc = (Util.dummy_loc, Evd.InternalHole) in
+         let (i',ev) = Evarutil.new_evar i env ~src:dloc (substl ks b) in
+	 (i', ev :: ks, m - 1))
+      (evd,[],List.length bs - 1) bs
+  in
+  ise_list2 evd' (fun i x1 x -> unify trs env i x1 (substl ks x))
+    params1 params &&= fun i ->
+  ise_list2 i (fun i u1 u -> unify trs env i u1 (substl ks u))
+    us2 us &&= fun i -> 
+  unify trs env i c1 (applist (c,(List.rev ks))) &&= fun i ->
+  ise_list2 i (fun i -> unify trs env i) ts ts1
+
+let swap (a, b) = (b, a) 
+
+let unify_evar_conv ?(conv_t=Reduction.CONV) ts env sigma0 t t' =
+  swap (unify ~conv_t:conv_t ts env sigma0 t t')

@@ -22,7 +22,7 @@ Definition remove {A} (x : A) :=
     | [y s'] (y :: s') =m> 
       r <- f s';
       ret (y :: r)
-    | _ => ret s
+    | _ =m> ret s
     end.
 
 Definition fv :=
@@ -53,3 +53,175 @@ Definition test_fv4 (y:nat) : (run fv (Dyn (fun x:nat->nat=> plus (x y)))) = [Dy
 
 Definition test_fv5 (y:nat) : 
   (run fv (Dyn (fun x:nat => x > y))) = [Dyn y] := eq_refl _.
+
+Definition test_fv6 (y w:nat) : 
+  (run fv (Dyn (fun x z:nat => x > y /\ y > z /\ w > z))) = [Dyn y; Dyn y; Dyn w] := eq_refl _.
+
+
+
+Definition mtest := fun f : nat -> nat =>
+                       mmatch f with
+                       | [g : nat -> nat] (fun x : nat=> g x) =m> ret (g 0)
+                       | _ => raise exception
+                       end.
+Definition ctest := fun f : nat -> nat =>
+                       mmatch f with
+                       | [g : nat -> nat] (fun x : nat=> g x) => ret (g 0)
+                       | _ => raise exception
+                       end.
+Check (run (mtest (plus 0))).
+Check (run (ctest (plus 0))).
+
+(* 1.  plus 0  ~=  fun x : nat => ?g[] x 
+   2.  fun m : nat => match 0 with 0 => m | .... end  ~=  fun x: nat => ?g[] x
+   3.  m : nat |- match 0 with 0 => m | S p => (plus p m) end  ~=   ?g[] m
+   4.  ?g[] := match 0 with 0 => m | S p => (plus p m) end
+*)
+
+Require Import Program.
+
+Module WithList.
+
+  Definition dyn := { x : Prop | x}.
+  Definition Dyn := @exist Prop (fun p=>p).
+
+  Definition ProofNotFound : Exception.
+    exact exception.
+  Qed.
+
+  Program
+  Definition lookup (p : Prop)  := 
+    mfix f (s : list dyn) : M p :=
+      mmatch s return M p with
+      | [x s'] (@Dyn p x) :: s' => ret x
+      | [d s'] d :: s' => f s'
+      | _ => raise ProofNotFound
+      end.
+  
+  Program
+  Definition tauto' :=
+    mfix f (c : list dyn) (p : Prop) : M p :=
+      mmatch p as p' return M p' with
+      | True => ret I 
+      | [p1 p2] p1 /\ p2 =>
+           r1 <- f c p1 ;
+           r2 <- f c p2 ;
+           ret (conj r1 r2)
+      | [p1 p2]  p1 \/ p2 =>
+           mtry 
+             r1 <- f c p1 ;
+             ret (or_introl r1)
+           with _ =>
+             r2 <- f c p2 ;
+             ret (or_intror r2)
+           end
+      | [p1 p2 : Prop] p1 -> p2 =>
+           nu (x:p1),
+             r <- f (@Dyn p1 x :: c) p2;
+             abs x r
+      | [A (q:A -> Prop)] (forall x:A, q x) =>
+           nu (x:A),
+             r <- f c (q x);
+             abs x r
+      | [A (q:A -> Prop)] (exists x:A, q x) =>
+           X <- evar A;
+           r <- f c (q X);
+           b <- is_evar X;
+           if b then 
+             raise ProofNotFound
+           else
+             ret (ex_intro q X r)
+      | [p':Prop] p' => lookup p' c
+      end.
+  
+  Definition tauto P := 
+    tauto' nil P.
+
+End WithList.
+
+
+Require Import hash.
+Module WithHash.
+
+  Definition ProofNotFound : Exception.
+    exact exception.
+  Qed.
+
+  Definition ctx := HashTbl.t Prop (fun x=>x).
+
+  Program
+  Definition tauto' (c : ctx) :=
+    mfix f (p : Prop) : M p :=
+    mmatch p as p' return M p' with
+    | True => ret I 
+    | [p1 p2] p1 /\ p2 =>
+         r1 <- f p1 ;
+         r2 <- f p2 ;
+         ret (conj r1 r2)
+    | [p1 p2]  p1 \/ p2 =>
+         mtry 
+           r1 <- f p1 ;
+           ret (or_introl r1)
+         with _ =>
+           r2 <- f p2 ;
+           ret (or_intror r2)
+         end
+    | [p1 p2 : Prop] p1 -> p2 =>
+         nu (x:p1),
+           HashTbl.add c p1 x;;
+           r <- f p2;
+           abs x r
+    | [A (q:A -> Prop)] (forall x:A, q x) =>
+         nu (x:A),
+           r <- f (q x);
+           abs x r
+    | [x:Prop] x => 
+      mtry HashTbl.find c x
+      with _ => raise ProofNotFound
+      end
+    end.
+
+  Definition tauto P := 
+    c <- HashTbl.create Prop (fun x=>x);
+    tauto' c P.
+
+End WithHash.
+
+
+Example ex_first_order_0 : 
+  forall x (p q : nat -> Prop), exists y, p x -> q x -> p y /\ q y.
+Proof. 
+  refine (run (WithList.tauto _)).
+Qed.
+
+Example ex_first_order_2 (p q r : Prop) : 
+  q -> p -> q.
+Proof. 
+  refine (run (WithHash.tauto _)).
+Qed.
+
+Example ex_first_order_2'  : 
+  forall (p q : nat -> Prop) x , p x -> q x -> p x /\ q x.
+Proof. 
+  refine (run (WithHash.tauto _)).
+Qed.
+
+
+
+Structure dummy := Dummy {
+                       value : nat
+                     }.
+
+Canonical Structure dummy0 := Dummy 0.
+
+Canonical Structure dummyS (d : dummy) := Dummy (S (value d)).
+
+Definition testDummyCS n :=
+  mmatch n with
+  | [d] value d =m> ret d
+  | _ => raise exception
+  end.
+
+Check (run (testDummyCS 2)).
+
+

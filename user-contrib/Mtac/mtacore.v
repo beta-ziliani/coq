@@ -167,6 +167,8 @@ Notation "p =m> [ H ] b" := (base p%core (fun H=>b%core) UniMuni)
   (no associativity, at level 201, H at next level) : mtac_patt_scope. 
 Notation "'_' => b " := (tele (fun x=> base x (fun _=>b%core) UniRed)) 
   (at level 201, b at next level) : mtac_patt_scope.
+Notation "'_' =m> b " := (tele (fun x=> base x (fun _=>b%core) UniMuni)) 
+  (at level 201, b at next level) : mtac_patt_scope.
 
 Delimit Scope mtac_patt_scope with mtac_patt.
 

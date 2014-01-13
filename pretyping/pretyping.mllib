@@ -10,6 +10,7 @@ Pretype_errors
 Evarutil
 Term_dnet
 Recordops
+Munify
 Evarconv
 Arguments_renaming
 Typing
@@ -26,7 +27,6 @@ Detyping
 Indrec
 Cases
 Simpleunify
-Munify
 Run
 Pretyping
 
