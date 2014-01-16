@@ -18,12 +18,19 @@ val find_unique : ('a -> bool) -> ('a -> 'b) -> 'b -> 'a list -> int option
 	
 val intersect : Term.constr array -> Term.constr array -> int list option
 
-val invert :  (Names.identifier * 'a * 'b) list ->
+val invert :
+           int list Util.Intmap.t ref ->
+           (Names.identifier * 'a * 'b) list ->
            Term.constr ->
-           Term.types list -> Term.types list -> (Term.constr * int list Util.Intmap.t) option
+           Term.types list -> Term.types list -> Term.constr option
 
-val fill_lambdas : Environ.env ->
-           Evd.evar_map -> Term.constr list -> Term.constr -> Term.constr
+val fill_lambdas_invert_types :
+           int list Util.Intmap.t ref ->
+           Environ.env ->
+           Evd.evar_map ->
+           (Names.identifier * 'a * 'b) list ->
+           Term.constr ->
+           Term.types list -> Term.types list -> Term.constr option
 
 val try_step :  Evd.conv_pb ->
            Names.transparent_state ->
@@ -63,3 +70,5 @@ val check_conv_record : Term.constr * 'a list ->
 
 val ise_list2 :   'a ->
            ('a -> 'b -> 'c -> bool * 'a) -> 'b list -> 'c list -> bool * 'a
+
+val debug : Term.constr -> Term.constr -> unit

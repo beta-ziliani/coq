@@ -397,11 +397,10 @@ let (-.) n m =
    t is the term to invert
    s is the substitution of the evar
    args are the arguments of the evar *)
-let invert nc t s args = 
+let invert map nc t s args = 
   let sargs = s @ args in
   let nclength = List.length nc in
   let argslength = List.length args in
-  let map = ref Util.Intmap.empty in
   let rec invert' t i =
     match kind_of_term t with
     | Var id -> 
@@ -447,7 +446,7 @@ let invert nc t s args =
       with Exit -> None
   in
   invert' t 0 >>= fun c' ->
-  return (c', !map)
+  return c'
 
 (** removes the positions in the list *)
 let remove l pos =
@@ -471,7 +470,9 @@ let prune evd (ev, plist) =
   let env_val' = (List.fold_right Environ.push_named_context_val env' 
                     Environ.empty_named_context_val) in
   let evd', ev' = Evarutil.new_evar_instance env_val' evd 
-    (Evd.evar_concl evi) (Array.to_list (id_substitution env')) in
+    (* TODO: need to check validity *)
+    (Reductionops.nf_evar evd (Evd.evar_concl evi))  
+    (Array.to_list (id_substitution env')) in
   Evd.define ev ev' evd'
 
 let prune_all map evd =
@@ -479,13 +480,14 @@ let prune_all map evd =
 
 
 (* given a list of arguments [x1 .. xn] with types [A1 .. An] and a
-   [body] with free indices [1 .. n], it returns [fun x1 : A1 => .. =>
-   fun xn : An => body].
+   [body] with free indices [1 .. n], it returns [fun x1 : A1^-1 => .. =>
+   fun xn : An^-1 => body].
 *)
-let fill_lambdas env sigma args body =
-  List.fold_right (fun arg bdy-> 
+let fill_lambdas_invert_types map env sigma nc body subst args =
+  List.fold_right (fun arg bdy-> bdy >>= fun bdy ->
     let ty = Retyping.get_type_of env sigma arg in
-    mkLambda (Names.Anonymous, ty, bdy)) args body
+    invert map nc ty subst args >>= fun ty ->
+    return (mkLambda (Names.Anonymous, ty, bdy))) args (return body)
 
 (* [check_conv_record (t1,l1) (t2,l2)] tries to decompose the problem
    (t1 l1) = (t2 l2) into a problem
@@ -738,9 +740,10 @@ and instantiate' ts conv_t env sigma0 (ev, subs as uv) args (h, args' as t) =
   let res = 
     let t = applist t in
     let subsl = Array.to_list subs in
-    invert nc (Reductionops.nf_evar sigma0 t) subsl args >>= fun (t', map) ->
-    let sigma1 = prune_all map sigma0 in
-    let t' = fill_lambdas env sigma1 args t' in
+    let map = ref Util.Intmap.empty in
+    invert map nc (Reductionops.nf_evar sigma0 t) subsl args >>= fun t' ->
+    fill_lambdas_invert_types map env sigma0 nc t' subsl args >>= fun t' ->
+    let sigma1 = prune_all !map sigma0 in
     let t'' = Evd.instantiate_evar nc t' subsl in
     let ty' = Retyping.get_type_of env sigma1 t'' in
     let ty = Evd.existential_type sigma1 uv in
@@ -835,5 +838,11 @@ and conv_record trs env evd t t' =
 
 let swap (a, b) = (b, a) 
 
+let debug t t'  = ()
+
 let unify_evar_conv ?(conv_t=Reduction.CONV) ts env sigma0 t t' =
-  swap (unify ~conv_t:conv_t ts env sigma0 t t')
+  swap (
+    let (b, evd) = unify ~conv_t:conv_t ts env sigma0 t t'
+    in
+      debug (Reductionops.nf_evar evd t) (Reductionops.nf_evar evd t');
+      (b, evd))
