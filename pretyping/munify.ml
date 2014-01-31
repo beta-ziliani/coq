@@ -226,150 +226,6 @@ let transp_matchR ts env sigma c l t unif get_value =
   in unif ts env sigma t (applist (v, l))
 
 
-(* pre: |s1| = |s2| 
-   pos: None if s1 or s2 are not var to var subs
-        Some l with l list of indexes where s1 and s2 do not agree *)
-let intersect s1 s2 =
-  let n = Array.length s1 in
-  let rec intsct i =
-    if i < n then
-      if (isVarOrRel s1.(i) && isVarOrRel s2.(i)) then
-	intsct (i+1) >>= fun l ->
-	if (isVar s1.(i) && is_same_var s1.(i) s2.(i)) ||
-	   (isRel s1.(i) && is_same_rel s1.(i) s2.(i)) 
-	then Some l
-	else Some (i :: l)
-      else None
-    else Some []
-  in 
-  assert (Array.length s2 = n) ;
-  intsct 0
-
-(* pre: ev is a not-defined evar *)
-let unify_same env sigma ev subs1 subs2 =
-  match intersect subs1 subs2 with
-  | Some [] -> success sigma
-  | _ -> err sigma
-
-
-(*
-(* pre: ev is a not-defined evar *)
-let unify_same env sigma ev subs1 subs2 =
-  match intersect subs1 subs2 with
-  | Some [] -> (Debug.execute "Meta-Same-Same"; success sigma)
-  | Some rml -> 
-      let res =
-	match instantiate_restriction sigma ev rml with
-	| Some (_, sigma', _) -> success sigma'
-	| None -> err sigma
-      in (Debug.execute "Meta-Same" ; res)
-  | None -> err sigma
-
-
-
-
-let subseteq s1 s2 = List.for_all (fun v -> List.mem v s2) s1
-
-let hat = List.map (fun (x, _, _) -> mkVar x)
-
-let is_none m =
-  match m with
-  | None -> true
-  | _ -> false
-
-let get m =
-  match m with
-  | Some v -> v
-  | _ -> raise PreconditionViolation
-
-let fv m = 
-  let rec fv' m i =
-    match kind_of_term m with 
-    | Var x -> [m]
-    | Rel j when j > i -> [m]
-    | _ -> 
-      fold_constr_with_binders succ (fun i s c -> s @ fv' c i) i [] m
-  in fv' m 0
-
-let head sigma m =
-  let (h, _) = whd_beta_stack sigma m in h
-(*
-  let rec head' m =
-    match kind_of_term m with 
-    | Cast (c, _, _) -> head' c
-    | LetIn (_, _, c) -> head' c
-    | App (c, _) -> head' c
-    | Case (_, _ , c, _) -> head' c
-    | _ -> m
-  in head' m
-*)
-
-let prune_context sigma rho tao psi =
-  let rec pctxt tao psi =
-    match (tao, psi) with
-    | ([], []) -> Some []
-    | (m :: tao', (x, t, a) :: psi1) -> 
-      pctxt tao' psi1 >>= fun psi2 ->
-      let hpsi2 = hat psi2 in
-      if subseteq (fv m) rho && subseteq (fv a) hpsi2 && (is_none t || subseteq (fv (get t)) hpsi2) then
-        Some ((x, t, a) :: psi2)
-      else if isVarOrRel (head sigma m) && not (List.mem (head sigma m) rho) then
-        Some psi2
-      else
-        None
-    | _ -> raise PreconditionViolation
-  in pctxt tao psi
-
-let prune rsigma rho m =
-  let rec pruneme m i =
-    let m = whd_evar !rsigma m in
-    match kind_of_term m with
-    | Evar (u, tao) -> 
-      let ui = Evd.find_undefined !rsigma u in
-      let psi1 = evar_filtered_context ui in
-      let opsi2 = prune_context !rsigma rho (Array.to_list tao) psi1 in
-      if is_none opsi2 then
-        false
-      else 
-        let psi2 = get opsi2 in
-        if psi1 = psi2 then
-          true
-        else if subseteq (fv ui.evar_concl) (hat psi2) then
-          let v = new_untyped_evar () in
-          let evi' =
-          { ui with 
-            evar_body = Evar_empty;
-            evar_hyps = val_of_named_context psi2;
-            evar_filter = Array.to_list (Array.init (List.length psi2) (fun _-> true));
-            evar_candidates = None }
-          in
-          let id_psi2 = id_substitution psi2 in
-          let body = mkEvar (v, id_psi2) in
-          rsigma := Evd.add !rsigma v evi' ;
-          rsigma := Evd.define u body !rsigma ;
-          true
-        else
-          false
- 
-    | Var x -> List.mem m rho
-
-    | Rel j when j > i -> List.mem (mkRel (j-i)) rho 
-
-    | _ -> 
-      fold_constr_with_binders succ (fun i b c -> 
-        b && pruneme c i) i true m
-  in pruneme m 0
-
-
-let rec define_evar_as_lambdas env sigma (ev, evargs) n =
-    if n = 0 then
-      sigma
-    else
-      let sigma', lam = define_evar_as_lambda env sigma (ev, evargs) in
-      let _, _, ev' = destLambda lam in
-      define_evar_as_lambdas env sigma (destEvar ev') (n-1)
-*)
-
 let (-.) n m =
   if n > m then n - m
   else 0
@@ -395,7 +251,7 @@ let invert map nc t s args =
   let sargs = s @ args in
   let nclength = List.length nc in
   let argslength = List.length args in
-  let rec invert' t i =
+  let rec invert' inside_evar t i =
     match kind_of_term t with
       | Var id -> 
 	find_unique_var id sargs >>= fun j -> 
@@ -415,10 +271,10 @@ let invert map nc t s args =
       | Evar (ev, evargs) ->
 	begin
 	  let f (j : int) c  = 
-            match invert' c i with
+            match invert' true c i with
               | Some c' -> c'
               | _ -> 
-		if isVar c || isRel c then
+		if (not inside_evar) && (isVar c || isRel c) then
 		  begin
 		    (if not (Util.Intmap.mem ev !map) then
 			map := Util.Intmap.add ev [j] !map
@@ -434,12 +290,12 @@ let invert map nc t s args =
 	end
       | _ -> 
 	try return (map_constr_with_binders succ (fun i c -> 
-	  match invert' c i with
+	  match invert' inside_evar c i with
 	    | Some c' -> c'
 	    | None -> raise Exit) i t)
 	with Exit -> None
   in
-  invert' t 0 >>= fun c' ->
+  invert' false t 0 >>= fun c' ->
   return c'
 
 (** removes the positions in the list *)
@@ -483,6 +339,35 @@ let prune evd (ev, plist) =
 
 let prune_all map evd =
   List.fold_left prune evd (Util.Intmap.bindings map)
+
+(* pre: |s1| = |s2| 
+   pos: None if s1 or s2 are not var to var subs
+        Some l with l list of indexes where s1 and s2 do not agree *)
+let intersect s1 s2 =
+  let n = Array.length s1 in
+  let rec intsct i =
+    if i < n then
+      if (isVarOrRel s1.(i) && isVarOrRel s2.(i)) then
+	intsct (i+1) >>= fun l ->
+	if (isVar s1.(i) && is_same_var s1.(i) s2.(i)) ||
+	   (isRel s1.(i) && is_same_rel s1.(i) s2.(i)) 
+	then Some l
+	else Some (i :: l)
+      else None
+    else Some []
+  in 
+  assert (Array.length s2 = n) ;
+  intsct 0
+
+(* pre: ev is a not-defined evar *)
+let unify_same env sigma ev subs1 subs2 =
+  match intersect subs1 subs2 with
+  | Some [] -> success sigma
+  | Some l -> try 
+		success (prune sigma (ev, l))
+              with CannotPrune -> err sigma
+  | _ -> err sigma
+
 
 
 (* given a list of arguments [x1 .. xn] with types [A1 .. An] and a
