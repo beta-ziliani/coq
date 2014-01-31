@@ -188,6 +188,81 @@ Module WithHash.
 End WithHash.
 
 
+Module WithCT.
+
+  Definition dyn := { x : Prop | x}.
+  Definition Dyn := @exist Prop (fun p=>p).
+
+  Definition ProofNotFound : Exception.
+    exact exception.
+  Qed.
+
+Definition Ctx := list Type.
+Definition CtxSet := list Set.
+Coercion CtxCoerce := map (fun (s: Set) => (s:Type)) : CtxSet -> Ctx.
+
+Inductive Subst : Ctx -> Type :=
+| snil : Subst nil
+| scons A C : A -> Subst C -> Subst (A::C).
+
+  Record CT C (P: Type) : Type := cp { cProof : Subst C -> P }.
+
+  Definition nu' : forall C A B, (A -> CT (A :: C) B) -> M (CT (A :: C) B) := 
+    fun C A B f => nu x, 
+      ret (cp (fun s=>(cProof (f x) s))).
+
+  Program
+  Definition lookup (p : Prop)  := 
+    mfix f (s : list dyn) : M p :=
+      mmatch s return M p with
+      | [x s'] (@Dyn p x) :: s' => ret x
+      | [d s'] d :: s' => f s'
+      | _ => raise ProofNotFound
+      end.
+  
+  Program
+  Definition tauto' :=
+    mfix f (c : list dyn) (p : Prop) : M p :=
+      mmatch p as p' return M p' with
+      | True => ret I 
+      | [p1 p2] p1 /\ p2 =>
+           r1 <- f c p1 ;
+           r2 <- f c p2 ;
+           ret (conj r1 r2)
+      | [p1 p2]  p1 \/ p2 =>
+           mtry 
+             r1 <- f c p1 ;
+             ret (or_introl r1)
+           with _ =>
+             r2 <- f c p2 ;
+             ret (or_intror r2)
+           end
+      | [p1 p2 : Prop] p1 -> p2 =>
+           nu (x:p1),
+             r <- f (@Dyn p1 x :: c) p2;
+             abs x r
+      | [A (q:A -> Prop)] (forall x:A, q x) =>
+           nu (x:A),
+             r <- f c (q x);
+             abs x r
+      | [A (q:A -> Prop)] (exists x:A, q x) =>
+           X <- evar A;
+           r <- f c (q X);
+           b <- is_evar X;
+           if b then 
+             raise ProofNotFound
+           else
+             ret (ex_intro q X r)
+      | [p':Prop] p' => lookup p' c
+      end.
+  
+  Definition tauto P := 
+    tauto' nil P.
+
+End WithList.
+
+
+
 Example ex_first_order_0 : 
   forall x (p q : nat -> Prop), exists y, p x -> q x -> p y /\ q y.
 Proof. 

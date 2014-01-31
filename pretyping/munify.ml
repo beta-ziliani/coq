@@ -669,21 +669,14 @@ and one_is_meta ts conv_t env sigma0 (c, l as t) (c', l' as t') =
 
 and try_step conv_t ts env sigma0 (c, l as t) (c', l' as t') =
   match (kind_of_term c, kind_of_term c') with
-  (* Lam-BetaL *)
-  | Lambda (_, _, trm), _ when l <> [] ->
-    let t1 = applist (subst1 (List.hd l) trm, List.tl l) in
-    let t2 = applist t' in
-    unify ~conv_t ts env sigma0 t1 t2
-
   (* Lam-BetaR *)
   | _, Lambda (_, _, trm) when l' <> [] ->
     let t1 = applist t in
     let t2 = applist (subst1 (List.hd l') trm, List.tl l') in
     unify ~conv_t ts env sigma0 t1 t2 
-
-  (* Let-ZetaL *)
-  | LetIn (_, trm, _, body), _ ->
-    let t1 = applist (subst1 trm body, l) in
+  (* Lam-BetaL *)
+  | Lambda (_, _, trm), _ when l <> [] ->
+    let t1 = applist (subst1 (List.hd l) trm, List.tl l) in
     let t2 = applist t' in
     unify ~conv_t ts env sigma0 t1 t2
 
@@ -691,6 +684,11 @@ and try_step conv_t ts env sigma0 (c, l as t) (c', l' as t') =
   | _, LetIn (_, trm, _, body) ->
     let t1 = applist t in
     let t2 = applist (subst1 trm body, l') in
+    unify ~conv_t ts env sigma0 t1 t2
+  (* Let-ZetaL *)
+  | LetIn (_, trm, _, body), _ ->
+    let t1 = applist (subst1 trm body, l) in
+    let t2 = applist t' in
     unify ~conv_t ts env sigma0 t1 t2
 
   (* Rigid-Same-Delta *)	    
@@ -701,21 +699,23 @@ and try_step conv_t ts env sigma0 (c, l as t) (c', l' as t') =
   | Const c1, Const c2 when Names.eq_constant c1 c2 ->
       eq_rigid ts env sigma0 c1 l l' (unify ~conv_t) const_is_def const_value
 
-  (* Rigid-DeltaL *)
-  | Rel n1, _ when rel_is_def ts env n1 ->
-      transp_matchL ts env sigma0 n1 l (applist t') (unify ~conv_t) rel_value
-  | Var id1, _ when var_is_def ts env id1 ->
-      transp_matchL ts env sigma0 id1 l (applist t') (unify ~conv_t) var_value
-  | Const c1, _ when const_is_def ts env c1 ->
-      transp_matchL ts env sigma0 c1 l (applist t') (unify ~conv_t) const_value
-
   (* Rigid-DeltaR *)
   | _, Rel n2 when rel_is_def ts env n2 ->
       transp_matchR ts env sigma0 n2 l' (applist t) (unify ~conv_t) rel_value
   | _, Var id2 when var_is_def ts env id2 ->
       transp_matchR ts env sigma0 id2 l' (applist t) (unify ~conv_t) var_value
+  (* Rigid-DeltaL *)
+  | Rel n1, _ when rel_is_def ts env n1 ->
+      transp_matchL ts env sigma0 n1 l (applist t') (unify ~conv_t) rel_value
+  | Var id1, _ when var_is_def ts env id1 ->
+      transp_matchL ts env sigma0 id1 l (applist t') (unify ~conv_t) var_value
+
+  (* Constants get unfolded after everything else *)
   | _, Const c2 when const_is_def ts env c2 ->
       transp_matchR ts env sigma0 c2 l' (applist t) (unify ~conv_t) const_value
+  | Const c1, _ when const_is_def ts env c1 ->
+      transp_matchL ts env sigma0 c1 l (applist t') (unify ~conv_t) const_value
+
 (*      
   (* Lam-EtaL *)
   | Lambda (name, t1, c1), _ when l = [] ->
