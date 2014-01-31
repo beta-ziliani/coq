@@ -271,9 +271,11 @@ let intersect s1 s2 =
 let unify_same env sigma ev subs1 subs2 =
   match intersect subs1 subs2 with
   | Some [] -> success sigma
-  | Some l -> try 
+  | Some l -> begin
+              try 
 		success (prune sigma (ev, l))
               with CannotPrune -> err sigma
+              end
   | _ -> err sigma
 
 
@@ -546,17 +548,21 @@ and instantiate' ts conv_t env sigma0 (ev, subs as uv) args (h, args' as t) =
     let t'' = Evd.instantiate_evar nc t' subsl in
     let ty' = Retyping.get_type_of env sigma1 t'' in
     let ty = Evd.existential_type sigma1 uv in
-    Some (
-      unify ~conv_t:Reduction.CUMUL ts env sigma1 ty' ty &&= fun sigma2 ->
-	let t' = Reductionops.nf_evar sigma2 t' in
-	if Termops.occur_meta t' then 
-	  (Printf.printf "hay meta" ; err sigma2)
-	else if Termops.occur_evar ev t' then
-	  (Printf.printf "hay ciclo" ; err sigma2)
-	else
-	  (* needed only if an inferred type *)
-	  let t' = Termops.refresh_universes t' in
-	  success (Evd.define ev t' sigma2))
+    let p = unify ~conv_t:Reduction.CUMUL ts env sigma1 ty' ty &&= fun sigma2 ->
+      let t' = Reductionops.nf_evar sigma2 t' in
+      if Termops.occur_meta t' || Termops.occur_evar ev t' then 
+	err sigma2
+      else
+        (* needed only if an inferred type *)
+	let t' = Termops.refresh_universes t' in
+	success (Evd.define ev t' sigma2)
+    in
+    Some p
+  in 
+  match res with
+    | Some r -> r
+    | None -> err sigma0
+(*
   in
   match res with
   | Some r -> r (* Meta-Inst *)
@@ -567,10 +573,12 @@ and instantiate' ts conv_t env sigma0 (ev, subs as uv) args (h, args' as t) =
     if t <> t' then
       begin
         let ev = mkEvar uv in
-        unify ~conv_t ts env sigma0 ev t'
+        let r = unify ~conv_t ts env sigma0 ev t' in
+	Printf.println "reducing help";
+	r
       end
     else err sigma0
-
+      *)
 (* by invariant, we know that ev is uninstantiated *)
 and instantiate ts conv_t env sigma 
     (ev, subs as evsubs) args (h, args' as t) =
