@@ -48,23 +48,6 @@ let filter nc rml =
   else rechyps 0 rml nc
 
 
-let collect_vars =
-  let rec aux vars c = match kind_of_term c with
-  | Var id -> Idset.add id vars
-  | _ -> fold_constr aux vars c in
-  aux Idset.empty
-
-
-let free_vars_in sigma tm vars = 
-  Idset.for_all (fun v -> List.mem v vars) (collect_vars (nf_evar sigma tm))
-
-
-let make_safe sigma nc =
-  let rec mksafe vars nc i = 
-    match vars, nc with
-    | [], [] -> [], []
-    | (_ :: vars'), (id, body, ty as t) :: nc' ->
-	let rml, res = mksafe vars' nc' (i+1) in
 	if (free_vars_in sigma ty vars' &&
 	   match body with
 	   | None -> true
@@ -321,7 +304,6 @@ let head sigma m =
   in head' m
 *)
 
-exception CannotPrune
 let prune_context sigma rho tao psi =
   let rec pctxt tao psi =
     match (tao, psi) with
@@ -392,58 +374,70 @@ let (-.) n m =
   if n > m then n - m
   else 0
 
-(* pre: |nc| = |s|
+(* pre: |nc| = |s| and s and args are both a list of vars or rels.
    nc is the context of the evar
    t is the term to invert
    s is the substitution of the evar
-   args are the arguments of the evar *)
+   args are the arguments of the evar
+   map is an Intmap mapping evars with list of positions.
+   Given a problem of the form
+     ?e[s] args = t
+   this function returns t' equal to t, except that every free
+   variable (or rel) x in t is replaced by
+   - If x appears (uniquely) in s, then x is replaced by Var n, where
+     n is the name of the variable in nc in the position where x was
+     found in s.
+   - If x appears (uniquely) in args, then x is replaced by Rel j, were
+     j is the position of x in args.
+   As a side effect, it populates the map with evars who sould be prunned.
+   Prunning is needed to avoid failing when there is hope. *)
 let invert map nc t s args = 
   let sargs = s @ args in
   let nclength = List.length nc in
   let argslength = List.length args in
   let rec invert' t i =
     match kind_of_term t with
-    | Var id -> 
-      find_unique_var id sargs >>= fun j -> 
-      if j < nclength then
-	let (name, _, _) = List.nth nc j in
-	return (mkVar name)
-      else
-	return (mkRel (nclength+argslength - j))
-    | Rel j when j > i-> 
-      find_unique_rel (j-i) sargs >>= fun k -> 
-      if k < nclength then
-	let (name, _, _) = List.nth nc k in
-	return (mkVar name)
-      else
-	return (mkRel (nclength+argslength - k))
-          
-    | Evar (ev, evargs) ->
-      begin
-      let f (j : int) c  = 
-        match invert' c i with
-          | Some c' -> c'
-          | _ -> 
-            if isVar c || isRel c then
-              begin
-              (if not (Util.Intmap.mem ev !map) then
-                map := Util.Intmap.add ev [j] !map
-              else
-                map := Util.Intmap.add ev (j :: Util.Intmap.find ev !map) !map)
-                ; c
-              end
-            else
-              raise Exit
-      in
-      try return (mkEvar (ev, Array.mapi f evargs))
-      with Exit -> None
-      end
-    | _ -> 
-      try return (map_constr_with_binders succ (fun i c -> 
-	match invert' c i with
-	  | Some c' -> c'
-	  | None -> raise Exit) i t)
-      with Exit -> None
+      | Var id -> 
+	find_unique_var id sargs >>= fun j -> 
+	if j < nclength then
+	  let (name, _, _) = List.nth nc j in
+	  return (mkVar name)
+	else
+	  return (mkRel (nclength+argslength - j))
+      | Rel j when j > i-> 
+	find_unique_rel (j-i) sargs >>= fun k -> 
+	if k < nclength then
+	  let (name, _, _) = List.nth nc k in
+	  return (mkVar name)
+	else
+	  return (mkRel (nclength+argslength - k))
+            
+      | Evar (ev, evargs) ->
+	begin
+	  let f (j : int) c  = 
+            match invert' c i with
+              | Some c' -> c'
+              | _ -> 
+		if isVar c || isRel c then
+		  begin
+		    (if not (Util.Intmap.mem ev !map) then
+			map := Util.Intmap.add ev [j] !map
+		     else
+			map := Util.Intmap.add ev (j :: Util.Intmap.find ev !map) !map)
+                    ; c
+		  end
+		else
+		  raise Exit
+	  in
+	  try return (mkEvar (ev, Array.mapi f evargs))
+	  with Exit -> None
+	end
+      | _ -> 
+	try return (map_constr_with_binders succ (fun i c -> 
+	  match invert' c i with
+	    | Some c' -> c'
+	    | None -> raise Exit) i t)
+	with Exit -> None
   in
   invert' t 0 >>= fun c' ->
   return c'
@@ -460,20 +454,32 @@ let remove l pos =
           (x :: remove' (i+1) s)
   in remove' 0 l
 
+let collect_vars =
+  let rec aux vars c = match kind_of_term c with
+  | Var id -> Names.Idset.add id vars
+  | _ -> fold_constr aux vars c in
+  aux Names.Idset.empty
+
+let free_vars_in tm vars = 
+  Names.Idset.for_all (fun v -> List.mem v vars) (collect_vars tm)
+
+exception CannotPrune
 (** ev is the evar and plist the indices to prune.  from ?ev : T[env]
     it creates a new evar ?ev' with a shorter context env' such that
-    ?ev := ?ev'[id_env'] *)
+    ?ev := ?ev'[id_env']. If the prunning is unsuccessful, it throws
+    the exception CannotPrune. *)
 let prune evd (ev, plist) =
   let evi = Evd.find_undefined evd ev in
   let env = Evd.evar_filtered_context evi in
   let env' = remove env plist in
   let env_val' = (List.fold_right Environ.push_named_context_val env' 
                     Environ.empty_named_context_val) in
-  let evd', ev' = Evarutil.new_evar_instance env_val' evd 
-    (* TODO: need to check validity *)
-    (Reductionops.nf_evar evd (Evd.evar_concl evi))  
-    (Array.to_list (id_substitution env')) in
-  Evd.define ev ev' evd'
+  let concl = Reductionops.nf_evar evd (Evd.evar_concl evi) in
+  if free_vars_in concl (Termops.ids_of_named_context env') then
+    let evd', ev' = Evarutil.new_evar_instance env_val' evd 
+      concl (Array.to_list (id_substitution env')) in
+    Evd.define ev ev' evd'
+  else raise CannotPrune
 
 let prune_all map evd =
   List.fold_left prune evd (Util.Intmap.bindings map)
