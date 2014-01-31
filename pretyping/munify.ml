@@ -138,43 +138,43 @@ let (-.) n m =
   if n > m then n - m
   else 0
 
-(* pre: |nc| = |s| and s and args are both a list of vars or rels.
-   nc is the context of the evar
+(* pre: |ctx| = |subs| and subs and args are both a list of vars or rels.
+   ctx is the (named) context of the evar
    t is the term to invert
-   s is the substitution of the evar
+   subs is the substitution of the evar
    args are the arguments of the evar
    map is an Intmap mapping evars with list of positions.
    Given a problem of the form
-     ?e[s] args = t
+     ?e[subs] args = t
    this function returns t' equal to t, except that every free
    variable (or rel) x in t is replaced by
-   - If x appears (uniquely) in s, then x is replaced by Var n, where
-     n is the name of the variable in nc in the position where x was
+   - If x appears (uniquely) in subs, then x is replaced by Var n, where
+     n is the name of the variable in ctx in the position where x was
      found in s.
    - If x appears (uniquely) in args, then x is replaced by Rel j, were
      j is the position of x in args.
    As a side effect, it populates the map with evars who sould be prunned.
-   Prunning is needed to avoid failing when there is hope. *)
-let invert map nc t s args = 
-  let sargs = s @ args in
-  let nclength = List.length nc in
-  let argslength = List.length args in
+   Prunning is needed to avoid failing when there is hope.
+*)
+let invert map ctx t subs args = 
+  let sargs = subs @ args in
+  let in_subs j = j < List.length ctx in
   let rec invert' inside_evar t i =
     match kind_of_term t with
       | Var id -> 
 	find_unique_var id sargs >>= fun j -> 
-	if j < nclength then
-	  let (name, _, _) = List.nth nc j in
+	if in_subs j then
+	  let (name, _, _) = List.nth ctx j in
 	  return (mkVar name)
 	else
-	  return (mkRel (nclength+argslength - j))
+	  return (mkRel (List.length sargs - j))
       | Rel j when j > i-> 
 	find_unique_rel (j-i) sargs >>= fun k -> 
-	if k < nclength then
-	  let (name, _, _) = List.nth nc k in
+	if in_subs k then
+	  let (name, _, _) = List.nth ctx k in
 	  return (mkVar name)
 	else
-	  return (mkRel (nclength+argslength - k))
+	  return (mkRel (List.length sargs - k))
             
       | Evar (ev, evargs) ->
 	begin
