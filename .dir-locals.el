@@ -1,4 +1,4 @@
 
 ((coq-mode . (
-(coq-prog-name . "/Users/beta/coq-dev/mtac1/bin/coqtop.byte")
+(coq-prog-name . "/local/beta/Apps/mtac1-v8.4/bin/coqtop.byte")
 )))

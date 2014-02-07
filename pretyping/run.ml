@@ -617,16 +617,26 @@ let rec run' (env, sigma, undo as ctxt) t =
 	  nth 0, nth 1, nth 2, nth 3, nth 4, nth 5, nth 6, nth 7, nth 8, nth 9 in
 	run_fix ctxt h [|a1; a2; a3|] b s i f [|x1; x2; x3|]
 
-      | 8 -> assert_args 4; (* match *)
+      | 8 -> assert_args 12; (* fix 4 *)
+	let a1, a2, a3, a4, b, s, i, f, x1, x2, x3, x4 = 
+	  nth 0, nth 1, nth 2, nth 3, nth 4, nth 5, nth 6, nth 7, nth 8, nth 9, nth 10, nth 11 in
+	run_fix ctxt h [|a1; a2; a3; a4|] b s i f [|x1; x2; x3; x4|]
+
+      | 9 -> assert_args 14; (* fix 5 *)
+	let a1, a2, a3, a4, a5, b, s, i, f, x1, x2, x3, x4, x5 = 
+	  nth 0, nth 1, nth 2, nth 3, nth 4, nth 5, nth 6, nth 7, nth 8, nth 9, nth 10, nth 11, nth 12, nth 13 in
+	run_fix ctxt h [|a1; a2; a3; a4; a5|] b s i f [|x1; x2; x3; x4; x5|]
+
+      | 10 -> assert_args 4; (* match *)
 	let (sigma', body) = runmatch (env, sigma) (nth 2) (nth 0) (nth 3) in
 	run' (env, sigma', undo) body
 
-      | 9 -> assert_args 1; (* print *)
+      | 11 -> assert_args 1; (* print *)
 	let s = nth 0 in
 	print env sigma s;
 	return sigma (Lazy.force CoqUnit.mkTT)
 
-      | 10 -> assert_args 3; (* nu *)
+      | 12 -> assert_args 3; (* nu *)
 	let a, f = nth 0, nth 2 in
 	let fx = mkApp(lift 1 f, [|mkRel 1|]) in
         let ur = ref [] in
@@ -646,37 +656,37 @@ let rec run' (env, sigma, undo as ctxt) t =
 	      fail (pop e)
         end
 
-      | 11 -> assert_args 2; (* is_param *)
+      | 13 -> assert_args 2; (* is_param *)
 	let e = whd_betadeltaiota env sigma (nth 1) in
 	if isRel e then
 	  return sigma (Lazy.force CoqBool.mkTrue)
 	else
 	  return sigma (Lazy.force CoqBool.mkFalse)
 
-      | 12 -> assert_args 4; (* abs *)
+      | 14 -> assert_args 4; (* abs *)
         let a, p, x, y = nth 0, nth 1, nth 2, nth 3 in
         abs env sigma a p x y false
 
-      | 13 -> assert_args 4; (* abs_eq *)
+      | 15 -> assert_args 4; (* abs_eq *)
         let a, p, x, y = nth 0, nth 1, nth 2, nth 3 in
         abs env sigma a p x y true
 
-      | 14 -> assert_args 1; (* evar *)
+      | 16 -> assert_args 1; (* evar *)
 	let t = nth 0 in
 	let (sigma', ev) = Evarutil.new_evar sigma env t in
 	return sigma' ev
 
-      | 15 -> assert_args 2; (* is_evar *)
+      | 17 -> assert_args 2; (* is_evar *)
 	let e = whd_betadeltaiota env sigma (nth 1) in
 	if isEvar e then
 	  return sigma (Lazy.force CoqBool.mkTrue)
 	else
 	  return sigma (Lazy.force CoqBool.mkFalse)
 
-      | 16 -> assert_args 3; (* hash *)
+      | 18 -> assert_args 3; (* hash *)
         return sigma (hash ctxt (nth 1) (nth 2))
 
-      | 17 -> assert_args 4; (* nu_let *)
+      | 19 -> assert_args 4; (* nu_let *)
 	let a, t, f = nth 0, nth 2, nth 3 in
 	let fx = mkApp(lift 1 f, [|mkRel 1;CoqEq.mkAppEqRefl a (mkRel 1)|]) in
         let ur = ref [] in
@@ -693,15 +703,15 @@ let rec run' (env, sigma, undo as ctxt) t =
 	      fail (pop e)
         end
 
-      | 18 -> assert_args 0; (* solve_typeclasses *)
+      | 20 -> assert_args 0; (* solve_typeclasses *)
 	let evd' = Typeclasses.resolve_typeclasses env sigma in
 	return evd' (Lazy.force CoqUnit.mkTT)
 
-      | 19 -> assert_args 3; (* new_array *)
+      | 21 -> assert_args 3; (* new_array *)
 	let ty, n, c = nth 0, nth 1, nth 2 in
 	return sigma (ArrayRefs.new_array env sigma undo ty n c)
 
-      | 20 -> assert_args 3; (* get *)
+      | 22 -> assert_args 3; (* get *)
 	let ty, a, i = nth 0, nth 1, nth 2 in
 	begin
 	try
@@ -712,7 +722,7 @@ let rec run' (env, sigma, undo as ctxt) t =
 	  fail (Lazy.force Exceptions.mkOutOfBounds)
 	end
 
-      | 21 -> assert_args 4; (* set *)
+      | 23 -> assert_args 4; (* set *)
 	let ty, a, i, c = nth 0, nth 1, nth 2, nth 3 in
 	begin
 	try 
@@ -722,29 +732,9 @@ let rec run' (env, sigma, undo as ctxt) t =
 	  fail (Lazy.force Exceptions.mkOutOfBounds)
 	end
 
-      | 22 -> assert_args 2; (* length *)
+      | 24 -> assert_args 2; (* length *)
 	let i = nth 1 in
 	return sigma (ArrayRefs.length env sigma i)
-
-      | 23 -> assert_args 3; (* nu_abs *)
-	let a, f = nth 0, nth 2 in
-	if isLambda f then
-	  let (_,_,fx) = destLambda f in
-          let ur = ref [] in
-          begin
-	    match run' (push_rel (Anonymous, None, a) env, sigma, (ur :: undo)) fx with
-              | Val (sigma', e) ->
-		clean !ur;
-	        return sigma' (mkLambda (Anonymous, a, e))
-          | Err e -> 
-            clean !ur;
-	    if Intset.mem 1 (free_rels e) then
-              Exceptions.raise Exceptions.error_param
-	    else
-	      fail (pop e)
-          end
-	else
-	  Exceptions.raise "Test"
 
       | _ ->
 	Exceptions.raise "I have no idea what is this construct of T that you have here"

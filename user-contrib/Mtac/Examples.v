@@ -1,6 +1,7 @@
 Require Import mtac.
 
-Set Printing Existential Instances.
+(* Set Printing Existential Instances. *)
+
 Definition test1 := run (
   mmatch id 0 with
   | [f (x : nat)] f x =m> ret true
@@ -259,7 +260,7 @@ Inductive Subst : Ctx -> Type :=
   Definition tauto P := 
     tauto' nil P.
 
-End WithList.
+End WithCT.
 
 
 
@@ -300,3 +301,12 @@ Definition testDummyCS n :=
 Check (run (testDummyCS 2)).
 
 
+
+
+Definition let_unification :=
+  e <- evar nat;
+  mmatch let x := e in S x with
+  | let y := 1 in y =m> ret e
+  end.
+
+Check (run let_unification).

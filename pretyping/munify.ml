@@ -357,7 +357,7 @@ let rec unify ?(conv_t=Reduction.CONV) ts env sigma0 t t' =
     | _, Evar _ ->
       one_is_meta ts conv_t env sigma0 tapp tapp'
 
-    (* Prop-Same, Set-Same, Type-Same *)
+    (* Prop-Same, Set-Same, Type-Same, Type-Same-LE *)
     | Sort s1, Sort s2 -> 
       begin
       try
@@ -367,12 +367,13 @@ let rec unify ?(conv_t=Reduction.CONV) ts env sigma0 t t' =
         in (true, sigma1)
       with Univ.UniverseInconsistency _ -> err sigma0
       end
+
     (* Lam-Same *)
     | Lambda (name, t1, c1), Lambda (_, t2, c2) 
       when l = [] && l' = [] ->
       let env' = Environ.push_rel (name, None, t1) env in
       unify ts env sigma0 t1 t2 &&= fun sigma1 ->
-      unify ts env' sigma1 c1 c2 &&= fun sigma2 ->
+      unify ~conv_t ts env' sigma1 c1 c2 &&= fun sigma2 ->
       success sigma2
 
     (* Prod-Same *)
@@ -383,9 +384,15 @@ let rec unify ?(conv_t=Reduction.CONV) ts env sigma0 t t' =
     (* Let-Same *)
     | LetIn (name, trm1, ty1, body1), LetIn (_, trm2, ty2, body2) 
       when l = [] && l'= [] ->
-      unify ts env sigma0 trm1 trm2 &&= fun sigma1 ->
-      unify ~conv_t ts (Environ.push_rel (name, Some trm1, ty1) env) 
-      sigma1 body1 body2
+      (
+        let env' = Environ.push_rel (name, Some trm1, ty1) env in
+        unify ts env sigma0 trm1 trm2 &&= fun sigma1 ->
+        unify ~conv_t ts env' sigma1 body1 body2
+      ) ||= (fun _ ->
+          let body1 = subst1 trm1 body1 in
+          let body2 = subst1 trm2 body2 in
+        unify ~conv_t ts env sigma0 body1 body2
+      )
 
     (* Rigid-Same *)
     | Rel n1, Rel n2 when n1 = n2 && l = [] && l' = [] ->

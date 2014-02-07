@@ -78,6 +78,16 @@ Inductive Mtac : Type -> Prop :=
   ((forall (x1 : A1) (x2 : A2 x1) (x3 : A3 x1 x2), S (B x1 x2 x3)) -> 
     (forall (x1 : A1) (x2 : A2 x1) (x3 : A3 x1 x2), S (B x1 x2 x3))) -> 
   forall (x1 : A1) (x2 : A2 x1) (x3 : A3 x1 x2), Mtac (B x1 x2 x3)
+| tfix4' : forall {A1 A2 A3 A4 B} (S : Type -> Prop), 
+  (forall a, S a -> Mtac a) ->
+  ((forall (x1 : A1) (x2 : A2 x1) (x3 : A3 x1 x2) (x4 : A4 x1 x2 x3), S (B x1 x2 x3 x4)) -> 
+    (forall (x1 : A1) (x2 : A2 x1) (x3 : A3 x1 x2) (x4 : A4 x1 x2 x3), S (B x1 x2 x3 x4))) -> 
+  forall (x1 : A1) (x2 : A2 x1) (x3 : A3 x1 x2) (x4 : A4 x1 x2 x3), Mtac (B x1 x2 x3 x4)
+| tfix5' : forall {A1 A2 A3 A4 A5 B} (S : Type -> Prop), 
+  (forall a, S a -> Mtac a) ->
+  ((forall (x1 : A1) (x2 : A2 x1) (x3 : A3 x1 x2) (x4 : A4 x1 x2 x3) (x5 : A5 x1 x2 x3 x4), S (B x1 x2 x3 x4 x5)) -> 
+    (forall (x1 : A1) (x2 : A2 x1) (x3 : A3 x1 x2) (x4 : A4 x1 x2 x3) (x5 : A5 x1 x2 x3 x4), S (B x1 x2 x3 x4 x5))) -> 
+  forall (x1 : A1) (x2 : A2 x1) (x3 : A3 x1 x2) (x4 : A4 x1 x2 x3) (x5 : A5 x1 x2 x3 x4), Mtac (B x1 x2 x3 x4 x5)
 | tmatch : forall {A} B (t : A), list (tpatt A B t) -> Mtac (B t)
 | print : string -> Mtac unit
 | tnu : forall {A B}, (A -> Mtac B) -> Mtac B
@@ -109,6 +119,8 @@ with tpatt : forall A (B : A -> Type) (t : A), Type :=
 Definition tfix1 {A} B := @tfix1' A B Mtac (fun _ x => x).
 Definition tfix2 {A1 A2} B := @tfix2' A1 A2 B Mtac (fun _ x => x).
 Definition tfix3 {A1 A2 A3} B := @tfix3' A1 A2 A3 B Mtac (fun _ x => x).
+Definition tfix4 {A1 A2 A3 A4} B := @tfix4' A1 A2 A3 A4 B Mtac (fun _ x => x).
+Definition tfix5 {A1 A2 A3 A4 A5} B := @tfix5' A1 A2 A3 A4 A5 B Mtac (fun _ x => x).
 
 
 Definition ref : forall {A}, A -> Mtac (Ref A) := 
@@ -213,6 +225,12 @@ Definition mk_rec (Ty : Prop) (b : Ty) : M dynamic :=
   | [A1 A2 A3 B] (forall (x1:A1) (x2:A2 x1) (x3:A3 x1 x2), M (B x1 x2 x3)) 
     -> forall (x1:A1) (x2:A2 x1) (x3:A3 x1 x2), M (B x1 x2 x3) => [H]
     retS (Build_dynamic _ (tfix3 B (eq_ind _ id b _ H)))
+  | [A1 A2 A3 A4 B] (forall (x1:A1) (x2:A2 x1) (x3:A3 x1 x2) (x4:A4 x1 x2 x3), M (B x1 x2 x3 x4)) 
+    -> forall (x1:A1) (x2:A2 x1) (x3:A3 x1 x2) (x4:A4 x1 x2 x3), M (B x1 x2 x3 x4) => [H]
+    retS (Build_dynamic _ (tfix4 B (eq_ind _ id b _ H)))
+  | [A1 A2 A3 A4 A5 B] (forall (x1:A1) (x2:A2 x1) (x3:A3 x1 x2) (x4:A4 x1 x2 x3) (x5:A5 x1 x2 x3 x4), M (B x1 x2 x3 x4 x5)) 
+    -> forall (x1:A1) (x2:A2 x1) (x3:A3 x1 x2) (x4:A4 x1 x2 x3) (x5:A5 x1 x2 x3 x4), M (B x1 x2 x3 x4 x5) => [H]
+    retS (Build_dynamic _ (tfix5 B (eq_ind _ id b _ H)))
   | _ => raise (MFixException "Cannot typecheck the fixpoint. Perhaps you provided more than 3 arguments? If not, you can try providing the type to the fixpoint.")
   end.
 
@@ -230,6 +248,16 @@ Notation "'mfix3' f ( x : A ) ( y : B ) ( z : C ) := b" :=
   (tfix3' _ _ (fun f (x : A) (y : B) (z : C)=>b))
   (at level 85, f at level 0, x at next level, y at next level, z at next level, format
   "'[v  ' 'mfix3'  f  '(' x  ':'  A ')'  '(' y  ':'  B ')'  '(' z  ':'  C ')'  ':=' '/  ' b ']'").
+
+Notation "'mfix4' f ( x1 : A1 ) ( x2 : A2 ) ( x3 : A3 ) ( x4 : A4 ) := b" := 
+  (tfix4' _ _ (fun f (x1 : A1) (x2 : A2) (x3 : A3) (x4 : A4) =>b))
+  (at level 85, f at level 0, x1 at next level, x2 at next level, x3 at next level, x4 at next level, format
+  "'[v  ' 'mfix4'  f  '(' x1  ':'  A1 ')'  '(' x2  ':'  A2 ')'  '(' x3  ':'  A3 ')'  '(' x4  ':'  A4 ')'  ':=' '/  ' b ']'").
+
+Notation "'mfix5' f ( x1 : A1 ) ( x2 : A2 ) ( x3 : A3 ) ( x4 : A4 ) ( x5 : A5 ) := b" := 
+  (tfix4' _ _ (fun f (x1 : A1) (x2 : A2) (x3 : A3) (x4 : A4) (x5 : A5) =>b))
+  (at level 85, f at level 0, x1 at next level, x2 at next level, x3 at next level, x4 at next level, x5 at next level, format
+  "'[v  ' 'mfix5'  f  '(' x1  ':'  A1 ')'  '(' x2  ':'  A2 ')'  '(' x3  ':'  A3 ')'  '(' x4  ':'  A4 ')'  '(' x5  ':'  A5 ')'  ':=' '/  ' b ']'").
 
 
 Notation "'mfix' f x .. y := b" := (
