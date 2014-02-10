@@ -1,6 +1,8 @@
 open Term
 open Recordops
 
+let debug t = ()
+
 
 let (>>=) opt f = 
   match opt with
@@ -652,11 +654,5 @@ and conv_record trs env evd t t' =
 
 let swap (a, b) = (b, a) 
 
-let debug t t'  = ()
-
 let unify_evar_conv ?(conv_t=Reduction.CONV) ts env sigma0 t t' =
-  swap (
-    let (b, evd) = unify ~conv_t:conv_t ts env sigma0 t t'
-    in
-      debug (Reductionops.nf_evar evd t) (Reductionops.nf_evar evd t');
-      (b, evd))
+  swap (unify ~conv_t:conv_t ts env sigma0 t t')

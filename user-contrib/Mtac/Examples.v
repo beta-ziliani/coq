@@ -310,3 +310,45 @@ Definition let_unification :=
   end.
 
 Check (run let_unification).
+
+
+
+Structure testSort (d : Type) := TestSort { atype : Type }.
+
+Canonical Structure testProp := TestSort Prop Prop.
+Canonical Structure testProd c d a b := TestSort (c->d) (@atype c a -> @atype d b).
+Canonical Structure testSet := TestSort Set Set.
+Canonical Structure testType := TestSort Type Type.
+
+Program
+Definition checkSort (n : Type) :=
+  mmatch n return M (sigT (fun a=>testSort a)) with
+  | [(a:Type) (d: testSort a)] @atype a d =m> ret (@existT _ _ a d)
+  | _ => raise exception
+  end.
+
+Check (run (checkSort Prop)).
+Check (run (checkSort Type)).
+Check (run (checkSort Set)).
+Check (run (checkSort (Set -> Prop))).
+
+Canonical Structure testDef x := TestSort x x.
+
+Check (run (checkSort ((fun x : nat=>Prop) 0))).
+
+
+
+Structure testFun (d : Type) := TestFun { afuntype : Type }.
+
+Canonical Structure testFProp (x : Type) := TestFun Prop x.
+
+
+Program
+Definition checkFun (f : Type) :=
+  mmatch f with
+  | [(a:Type) (d: testFun a)] @afuntype a d =m> ret (@existT _ _ a d)
+  | _ => raise exception
+  end.
+
+Drop.
+Check (run (checkFun Set)).

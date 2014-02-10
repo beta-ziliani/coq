@@ -68,7 +68,8 @@ val check_conv_record : Term.constr * 'a list ->
            (Term.constr list * Term.types list) *
            ('a list * Term.types list) * 'a * (int * Term.constr)
 
-val ise_list2 :   'a ->
-           ('a -> 'b -> 'c -> bool * 'a) -> 'b list -> 'c list -> bool * 'a
+val ise_list2 : Evd.evar_map  ->
+           (Evd.evar_map -> Term.constr -> Term.constr -> bool * Evd.evar_map) -> 
+           Term.constr list -> Term.constr list -> bool * Evd.evar_map
 
-val debug : Term.constr -> Term.constr -> unit
+val debug : Term.constr list -> unit
