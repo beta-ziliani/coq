@@ -12,6 +12,11 @@ val unify_evar_conv : ?conv_t:Evd.conv_pb ->
 
 
 (* DEBUG *)
+val unify' : ?conv_t:Evd.conv_pb ->
+           Names.transparent_state ->
+           Environ.env ->
+           Evd.evar_map -> Term.types -> Term.types -> bool * Evd.evar_map
+
 val id_substitution : Sign.named_context -> Term.constr array
 
 val find_unique : ('a -> bool) -> ('a -> 'b) -> 'b -> 'a list -> int option
