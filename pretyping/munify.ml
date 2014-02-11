@@ -365,7 +365,7 @@ let rec unify' ?(conv_t=Reduction.CONV) ts env sigma0 t t' =
         | Reduction.CONV -> Evd.set_eq_sort sigma0 s1 s2 
         | _ -> Evd.set_leq_sort sigma0 s1 s2
         in (true, sigma1)
-      with Univ.UniverseInconsistency _ -> err sigma0
+      with _ -> err sigma0 
       end
 
     (* Lam-Same *)
