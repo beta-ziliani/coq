@@ -116,14 +116,9 @@ let rel_value env n =
   | Some v -> (lift n) v
   | _ -> assert false
 
-let eq_rigid ts env sigma c l1 l2 unif is_def get_value =
-  if is_def ts env c then
-    begin
-      let v = get_value env c
-      in unif ts env sigma (applist (v, l1)) (applist (v, l2))
-    end
-  else
-    err sigma
+let eq_rigid ts env sigma c l1 l2 unif get_value =
+  let v = get_value env c in 
+  unif ts env sigma (applist (v, l1)) (applist (v, l2))
 	
 let transp_matchL ts env sigma c l t unif get_value =
   let v = get_value env c
@@ -500,12 +495,12 @@ and try_step conv_t ts env sigma0 (c, l as t) (c', l' as t') =
     unify' ~conv_t ts env sigma0 t1 t2
 
   (* Rigid-Same-Delta *)	    
-  | Rel n1, Rel n2 when n1 = n2 ->
-      eq_rigid ts env sigma0 n1 l l' (unify' ~conv_t) rel_is_def rel_value
-  | Var id1, Var id2 when id1 = id2 -> 
-      eq_rigid ts env sigma0 id1 l l' (unify' ~conv_t) var_is_def var_value
-  | Const c1, Const c2 when Names.eq_constant c1 c2 ->
-      eq_rigid ts env sigma0 c1 l l' (unify' ~conv_t) const_is_def const_value
+  | Rel n1, Rel n2 when n1 = n2 && rel_is_def ts env n1 ->
+      eq_rigid ts env sigma0 n1 l l' (unify' ~conv_t) rel_value
+  | Var id1, Var id2 when id1 = id2 && var_is_def ts env id1 -> 
+      eq_rigid ts env sigma0 id1 l l' (unify' ~conv_t) var_value
+  | Const c1, Const c2 when Names.eq_constant c1 c2 && const_is_def ts env c1 ->
+      eq_rigid ts env sigma0 c1 l l' (unify' ~conv_t) const_value
 
   (* Rigid-DeltaR *)
   | _, Rel n2 when rel_is_def ts env n2 ->
@@ -614,6 +609,7 @@ and meta_fo ts env sigma (evsubs, args) (h, args') =
 
 
 (* unifies ty with a product type from {name : a} to some Type *)
+(*
 and check_product ts env sigma ty (name, a) =
   let nc = Environ.named_context env in
   let naid = Namegen.next_name_away name (Termops.ids_of_named_context nc) in
@@ -624,14 +620,15 @@ and check_product ts env sigma ty (name, a) =
   let sigma'' = Evd.add sigma' v evi in
   let idsubst = Array.append [| mkRel 1 |] (id_substitution nc) in
   unify' ts env sigma'' ty (mkProd (Names.Name naid, a, mkEvar(v, idsubst)))
-
+*)
+(*
 and eta_match ts env sigma0 (name, a, t1) (th, tl as t) =
   let env' = Environ.push_rel (name, None, a) env in
   let ty = Retyping.get_type_of env sigma0 (applist t) in
   let t' = applist (lift 1 th, List.map (lift 1) tl @ [mkRel 1]) in
   check_product ts env sigma0 ty (name, a) &&= fun sigma1 ->
   unify' ts env' sigma1 t1 t'
-
+*)
 and conv_record trs env evd t t' =
   let (c,bs,(params,params1),(us,us2),(ts,ts1),c1,(n,t2)) = check_conv_record t t' in
   let (evd',ks,_) =
