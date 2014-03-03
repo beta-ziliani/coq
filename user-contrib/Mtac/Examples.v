@@ -356,3 +356,36 @@ Definition checkFun (f : Type) :=
   end.
 
 Check (run (checkFun Set)).
+
+
+Definition test :=
+  let count_patt (c : nat -> forall A, M A -> M nat)  A B t :=
+      mfix cp (p : tpatt A B t) n :=
+      mmatch p  with
+      | [x f r] base x f r => nu h, c n _ (f h)
+      | [C f] tele (f : C -> tpatt A B t)  => nu x, cp (f x) (S n) : M nat
+      end
+  in
+  let count_patts (c : nat -> forall A, M A -> M nat) A B t := 
+      fix cp (l : list (tpatt A B t)) n :=
+        match l with
+        | a :: l' => 
+            r <- count_patt c _ _ _ a n;
+            cp l' r : M nat
+        | _ => ret n
+        end
+  in
+  tfix3 _ (fun count (n : nat) (A : Type) (f : M A) =>
+  match f with
+  | tmatch A B t ps => count_patts count A B t ps n
+  | _ => ret n
+  end).
+
+Definition testmm := (@test 0 _ (
+  mmatch 0 with
+  | [a b c] a + b + c => ret 0
+  | [a b] a + b => ret 1
+  | [a] a => ret 2
+  end)).
+
+Check (run testmm).
