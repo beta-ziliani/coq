@@ -148,8 +148,21 @@ let (-.) n m =
      found in s.
    - If x appears (uniquely) in args, then x is replaced by Rel j, were
      j is the position of x in args.
-   As a side effect, it populates the map with evars who sould be prunned.
-   Prunning is needed to avoid failing when there is hope.
+   As a side effect, it populates the map with evars that sould be prunned.
+   Prunning is needed to avoid failing when there is hope: the unification 
+   problem
+     ?e[x] = ?e'[x, z]
+   is solvable if we prune z from ?e'.  However, this is not the case in the 
+   following example:
+     ?e[x] = ?e'[x, ?e''[z]]
+   The problem lies on the two different options: we can either prune the 
+   second element of the substitution of ?e', or we can prune the one element 
+   in the substitution of ?e''.  To make the distinction, we use a boolean 
+   parameter [inside_evar] to mark that we should fail instead of prunning.
+  
+   Finally, note in the example above that we can also try instantiating ?e' 
+   with ?e instead of the other way round, and this is in fact tried by the
+   unification algorithm.
 *)
 let invert map ctx t subs args = 
   let sargs = subs @ args in
