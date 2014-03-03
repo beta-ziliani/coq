@@ -130,6 +130,16 @@ let transp_matchR ts env sigma c l t unif get_value =
   let v = get_value env c
   in unif ts env sigma t (applist (v, l))
 
+exception Unfoldable
+let unfold_value ts env sigma c =
+  if isVar c && var_is_def ts env (destVar c) then
+    var_value env (destVar c)
+  else if isRel c && rel_is_def ts env (destRel c) then
+    rel_value env (destRel c)
+  else if isConst c && const_is_def ts env (destConst c) then
+    const_value env (destConst c)
+  else
+    raise Unfoldable
 
 let (-.) n m =
   if n > m then n - m
@@ -404,6 +414,7 @@ let rec unify' ?(conv_t=Reduction.CONV) ts env sigma0 t t' =
         unify' ~conv_t ts env sigma0 body1 body2
       )
 
+(* ALREADY CONSIDERED IN THE CONV RULE! 
     (* Rigid-Same *)
     | Rel n1, Rel n2 when n1 = n2 && l = [] && l' = [] ->
       success sigma0
@@ -416,6 +427,7 @@ let rec unify' ?(conv_t=Reduction.CONV) ts env sigma0 t t' =
     | Construct c1, Construct c2 
       when Names.eq_constructor c1 c2 && l = [] && l' = []  ->
       success sigma0
+*)
 
     | CoFix (i1,(_,tys1,bds1 as recdef1)), CoFix (i2,(_,tys2,bds2))
       when i1 = i2 && l = [] && l' = [] ->
@@ -661,6 +673,8 @@ and conv_record trs env evd t t' =
     us2 us &&= fun i -> 
   unify' trs env i c1 (applist (c,(List.rev ks))) &&= fun i ->
   ise_list2 i (fun i -> unify' trs env i) ts ts1
+
+let unify = unify'
 
 let swap (a, b) = (b, a) 
 

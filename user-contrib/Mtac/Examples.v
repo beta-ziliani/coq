@@ -10,8 +10,13 @@ Definition test1 := run (
 
 Print test1.
 
-
 Set Implicit Arguments.
+
+
+Definition test1Step1 := run (retO ((fun x y:nat=> x + y) 1 2)).
+Definition test1Step2 := run (retO (1 + 2)).
+Definition test1Step3 := let f := fun x:nat=>x in run retO (f 0).
+
 
 Structure dyn := Dyn { ty : Type; el : ty }.
 Require Import Lists.List.
@@ -31,7 +36,7 @@ Definition fv :=
     mmatch d with
     | [B C (f : B -> C)] Dyn (fun y:B => f y) =m>
       nu (y : B),
-        f' <- retS (f y);
+        f' <- retO (f y);
         r <- fv (Dyn f');
         remove (Dyn y) r
     | [A B (x:A) (f : A -> B)] Dyn (f x) =m>
@@ -350,5 +355,4 @@ Definition checkFun (f : Type) :=
   | _ => raise exception
   end.
 
-Drop.
 Check (run (checkFun Set)).

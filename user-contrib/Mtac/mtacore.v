@@ -51,7 +51,8 @@ Definition mkArray (A : Type) (n : N) (v : A) : Type. exact Prop. Qed.
 Inductive Reduction : Type :=
 | RedNone : Reduction
 | RedSimpl : Reduction
-| RedWhd : Reduction.
+| RedWhd : Reduction
+| RedOneStep : Reduction.
 
 Inductive Unification : Type :=
 | UniRed : Unification
@@ -157,6 +158,7 @@ Notation "'M'" := Mtac.
 Notation "'ret'" := (tret RedNone).
 Notation "'retS'" := (tret RedSimpl).
 Notation "'retW'" := (tret RedWhd).
+Notation "'retO'" := (tret RedOneStep).
 
 Notation "r '<-' t1 ';' t2" := (@bind _ _ t1 (fun r=> t2)) 
   (at level 81, right associativity). 

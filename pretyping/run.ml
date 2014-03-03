@@ -70,11 +70,26 @@ module ReductionStrategy = struct
   let redNone = mkRed "RedNone"
   let redSimpl = mkRed "RedSimpl"
   let redWhd = mkRed "RedWhd"
+  let redOneStep = mkRed "RedOneStep"
 
   let test = fun r c -> eq_constr (Lazy.force r) c
   let isRedNone = test redNone
   let isRedSimpl = test redSimpl
   let isRedWhd = test redWhd
+  let isRedOneStep = test redOneStep
+
+  let one_step env sigma c =
+    let h, args = decompose_app c in
+    let h = whd_evar sigma h in
+    let r = 
+      match kind_of_term h with
+      | Lambda (_, _, trm) when args <> [] -> 
+        (subst1 (List.hd args) trm, List.tl args)
+      | LetIn (_, trm, _, body) -> (subst1 trm body, args)
+      | Var _ | Rel _ | Const _ -> (Munify.unfold_value Closure.all_transparent env sigma h, args)
+      | _ -> h, args
+    in applist r
+        
 
   let reduce sigma env strategy c =
     if isRedNone strategy then
@@ -83,6 +98,8 @@ module ReductionStrategy = struct
       Tacred.simpl env sigma c
     else if isRedWhd strategy then
       whd_betadeltaiota env sigma c
+    else if isRedOneStep strategy then
+      one_step env sigma c
     else
       Exceptions.raise Exceptions.unknown_reduction_strategy 
 
