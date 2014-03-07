@@ -49,6 +49,8 @@ type pretype_error =
   | UnexpectedType of constr * constr
   | NotProduct of constr
   | TypingError of type_error
+  (* BETA *)
+  | UncaughtUserException of constr
 
 exception PretypeError of env * Evd.evar_map * pretype_error
 
@@ -148,3 +150,7 @@ let error_not_product_loc loc env sigma c =
 
 let error_var_not_found_loc loc s =
   raise_pretype_error (loc, empty_env, Evd.empty, VarNotFound s)
+
+(* BETA *)
+let error_user_exception loc env sigma c =
+  raise_pretype_error (loc, env, sigma, UncaughtUserException c)

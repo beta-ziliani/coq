@@ -44,6 +44,8 @@ type notation_constr =
   | NSort of glob_sort
   | NPatVar of patvar
   | NCast of notation_constr * notation_constr cast_type
+  (* BETA *)
+  | NRun of notation_constr
 
 (** Note concerning NList: first constr is iterator, second is terminator;
     first id is where each argument of the list has to be substituted

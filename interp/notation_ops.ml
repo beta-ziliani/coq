@@ -107,6 +107,8 @@ let glob_constr_of_notation_constr_with_binders loc g f e = function
   | NHole (x, arg)  -> GHole (loc, x, arg)
   | NPatVar n -> GPatVar (loc,(false,n))
   | NRef x -> GRef (loc,x)
+  (* BETA *)
+  | NRun x -> GRun (loc, f e x)
 
 let glob_constr_of_notation_constr loc x =
   let rec aux () x =
@@ -159,6 +161,10 @@ let compare_glob_constr f add t1 t2 = match t1,t2 with
   | GSort (_,s1), GSort (_,s2) -> Miscops.glob_sort_eq s1 s2
   | GLetIn (_,na1,b1,c1), GLetIn (_,na2,b2,c2) when Name.equal na1 na2 ->
       on_true_do (f b1 b2 && f c1 c2) add na1
+  (*BETA*)
+  | GRun (_, c1), GRun (_, c2) -> f c1 c2
+  | GRun (_, c1), _ -> false
+  | _, GRun (_, c1) -> false
   | (GCases _ | GRec _
     | GPatVar _ | GEvar _ | GLetTuple _ | GIf _ | GCast _),_
   | _,(GCases _ | GRec _
@@ -290,6 +296,8 @@ let notation_constr_and_vars_of_glob_constr a =
   | GHole (_,w,arg) -> NHole (w, arg)
   | GRef (_,r) -> NRef r
   | GPatVar (_,(_,n)) -> NPatVar n
+  (* BETA *)
+  | GRun (_,c) -> NRun (aux c)
   | GEvar _ ->
       error "Existential variables not allowed in notations."
 
@@ -480,6 +488,10 @@ let rec subst_notation_constr subst bound raw =
       let r1' = subst_notation_constr subst bound r1 in
       let k' = Miscops.smartmap_cast_type (subst_notation_constr subst bound) k in
       if r1' == r1 && k' == k then raw else NCast(r1',k')
+
+  | NRun k ->
+      let k' = subst_notation_constr subst bound k in
+      NRun k'
 
 let subst_interpretation subst (metas,pat) =
   let bound = List.map fst metas in
@@ -720,6 +732,8 @@ let rec match_ inner u alp (tmetas,blmetas as metas) sigma a1 a2 =
       match_in u alp metas (match_in u alp metas sigma c1 c2) t1 t2
   | GCast(_,c1, CastCoerce), NCast(c2, CastCoerce) ->
       match_in u alp metas sigma c1 c2
+  (* BETA *)
+  | GRun (_, c1), NRun c2 -> match_in u alp metas sigma c1 c2
   | GSort (_,GType _), NSort (GType None) when not u -> sigma
   | GSort (_,s1), NSort s2 when Miscops.glob_sort_eq s1 s2 -> sigma
   | GPatVar _, NHole _ -> (*Don't hide Metas, they bind in ltac*) raise No_match

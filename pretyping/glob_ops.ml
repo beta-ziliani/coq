@@ -177,6 +177,11 @@ let map_glob_constr_left_to_right f = function
       GCast (loc,comp1,comp2)
   | (GVar _ | GSort _ | GHole _ | GRef _ | GEvar _ | GPatVar _) as x -> x
 
+  (* BETA *)
+  | GRun (loc,c) ->
+      let c1 = f c in
+      GRun (loc,c1)
+
 let map_glob_constr = map_glob_constr_left_to_right
 
 let fold_glob_constr f acc =
@@ -204,6 +209,9 @@ let fold_glob_constr f acc =
         in
         fold r c
     | (GSort _ | GHole _ | GRef _ | GEvar _ | GPatVar _) -> acc
+
+    (* BETA *)
+    | GRun (_,c) -> fold acc c
 
   and fold_pattern acc (_,idl,p,c) = fold acc c
 
@@ -251,6 +259,8 @@ let occur_glob_constr id =
     | GCast (loc,c,k) -> (occur c) || (match k with CastConv t
       | CastVM t | CastNative t -> occur t | CastCoerce -> false)
     | (GSort _ | GHole _ | GRef _ | GEvar _ | GPatVar _) -> false
+    (* BETA *)
+    | GRun (_, c) -> occur c
 
   and occur_pattern (loc,idl,p,c) = not (Id.List.mem id idl) && (occur c)
 
@@ -309,6 +319,8 @@ let free_glob_vars  =
     | GCast (loc,c,k) -> let v = vars bounded vs c in
 	(match k with CastConv t | CastVM t | CastNative t -> vars bounded v t | _ -> v)
     | (GSort _ | GHole _ | GRef _ | GEvar _ | GPatVar _) -> vs
+    (* BETA *)
+    | GRun (_, c) -> vars bounded vs c
 
   and vars_pattern bounded vs (loc,idl,p,c) =
     let bounded' = List.fold_right Id.Set.add idl bounded  in
@@ -341,6 +353,8 @@ let loc_of_glob_constr = function
   | GSort (loc,_) -> loc
   | GHole (loc,_,_) -> loc
   | GCast (loc,_,_) -> loc
+  (* BETA *)
+  | GRun (loc,_) -> loc
 
 (**********************************************************************)
 (* Conversion from glob_constr to cases pattern, if possible            *)

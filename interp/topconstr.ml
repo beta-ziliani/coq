@@ -138,6 +138,7 @@ let fold_constr_expr_with_binders g f n acc = function
 	  (fold_local_binders g f n acc t lb) c lb) l acc
   | CCoFix (loc,_,_) ->
       msg_warning (strbrk "Capture check in multiple binders not done"); acc
+  | CRun (_, l) -> f n acc l
 
 let free_vars_of_constr_expr c =
   let rec aux bdvars l = function
@@ -247,6 +248,7 @@ let map_constr_expr_with_binders g f e = function
         let e'' = List.fold_left (fun e ((_,id),_,_,_) -> g id e) e' dl in
         let d' = f e'' d in
         (id,bl',t',d')) dl)
+  | CRun (loc, c) -> CRun (loc, f e c) (*BETA*)
 
 (* Used in constrintern *)
 let rec replace_vars_constr_expr l = function

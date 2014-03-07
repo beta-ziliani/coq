@@ -114,6 +114,7 @@ Evarutil
 Evarsolve
 Term_dnet
 Recordops
+Munify
 Evarconv
 Arguments_renaming
 Typing
@@ -129,6 +130,7 @@ Program
 Coercion
 Unification
 Cases
+Run
 Pretyping
 Declaremods
 Library

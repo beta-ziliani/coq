@@ -51,6 +51,8 @@ type pretype_error =
   | UnexpectedType of constr * constr
   | NotProduct of constr
   | TypingError of type_error
+  (* BETA *)
+  | UncaughtUserException of constr
 
 exception PretypeError of env * Evd.evar_map * pretype_error
 
@@ -133,3 +135,8 @@ val error_not_product_loc :
 (** {6 Error in conversion from AST to glob_constr } *)
 
 val error_var_not_found_loc : Loc.t -> Id.t -> 'b
+
+(* BETA *)
+val error_user_exception :
+  Loc.t -> env -> Evd.evar_map -> constr -> 'b
+

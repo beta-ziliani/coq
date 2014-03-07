@@ -193,3 +193,4 @@ val push_rel_context_to_named_context : Environ.env -> types ->
   named_context_val * types * constr list * constr list * (identifier*constr) list
 
 val generalize_evar_over_rels : evar_map -> existential -> types * constr list
+

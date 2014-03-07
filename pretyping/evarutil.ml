@@ -21,6 +21,8 @@ open Evd
 open Reductionops
 open Pretype_errors
 open Retyping
+open Globnames
+open Recordops
 
 (****************************************************)
 (* Expanding/testing/exposing existential variables *)
@@ -786,3 +788,5 @@ let lift_tycon n = Option.map (lift n)
 let pr_tycon env = function
     None -> str "None"
   | Some t -> Termops.print_constr_env env t
+
+

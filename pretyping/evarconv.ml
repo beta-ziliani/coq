@@ -80,58 +80,6 @@ let position_problem l2r = function
   | CONV -> None
   | CUMUL -> Some l2r
 
-(* [check_conv_record (t1,l1) (t2,l2)] tries to decompose the problem
-   (t1 l1) = (t2 l2) into a problem
-
-     l1 = params1@c1::extra_args1
-     l2 = us2@extra_args2
-     (t1 params1 c1) = (proji params (c xs))
-     (t2 us2) = (cstr us)
-     extra_args1 = extra_args2
-
-   by finding a record R and an object c := [xs:bs](Build_R params v1..vn)
-   with vi = (cstr us), for which we know that the i-th projection proji
-   satisfies
-
-      (proji params (c xs)) = (cstr us)
-
-   Rem: such objects, usable for conversion, are defined in the objdef
-   table; practically, it amounts to "canonically" equip t2 into a
-   object c in structure R (since, if c1 were not an evar, the
-   projection would have been reduced) *)
-
-let check_conv_record (t1,sk1) (t2,sk2) =
-    let proji = global_of_constr t1 in
-    let canon_s,sk2_effective =
-      try
-	match kind_of_term t2 with
-	  Prod (_,a,b) -> (* assert (l2=[]); *)
-      	  if dependent (mkRel 1) b then raise Not_found
-	  else lookup_canonical_conversion (proji, Prod_cs),(Stack.append_app [|a;pop b|] Stack.empty)
-	| Sort s ->
-	   lookup_canonical_conversion
-	     (proji, Sort_cs (family_of_sort s)),[]
-	| _ ->
-	   let c2 = global_of_constr t2 in
-	   lookup_canonical_conversion (proji, Const_cs c2),sk2
-      with Not_found ->
-	lookup_canonical_conversion (proji,Default_cs),[]
-    in
-    let { o_DEF = c; o_INJ=n; o_TABS = bs;
-          o_TPARAMS = params; o_NPARAMS = nparams; o_TCOMPS = us } = canon_s in
-    let params1, c1, extra_args1 =
-      match Stack.strip_n_app nparams sk1 with
-      | Some (params1, c1,extra_args1) -> params1, c1, extra_args1
-      | _ -> raise Not_found in
-    let us2,extra_args2 =
-      let l_us = List.length us in
-      if Int.equal l_us 0 then Stack.empty,sk2_effective
-      else match (Stack.strip_n_app (l_us-1) sk2_effective) with
-	   | None -> raise Not_found
-	   | Some (l',el,s') -> (l'@Stack.append_app [|el|] Stack.empty,s') in
-    (c,bs,(Stack.append_app_list params Stack.empty,params1),(Stack.append_app_list us Stack.empty,us2),(extra_args1,extra_args2),c1,
-    (n,Stack.zip(t2,sk2)))
-
 (* Precondition: one of the terms of the pb is an uninstantiated evar,
  * possibly applied to arguments. *)
 
@@ -233,6 +181,62 @@ let exact_ise_stack2 env evd f sk1 sk2 =
   if Reductionops.Stack.compare_shape sk1 sk2 then
     ise_exact (ise_stack2 false env evd f) sk1 sk2
   else UnifFailure (evd, (* Dummy *) NotSameHead)
+
+
+
+(* [check_conv_record (t1,l1) (t2,l2)] tries to decompose the problem
+   (t1 l1) = (t2 l2) into a problem
+
+     l1 = params1@c1::extra_args1
+     l2 = us2@extra_args2
+     (t1 params1 c1) = (proji params (c xs))
+     (t2 us2) = (cstr us)
+     extra_args1 = extra_args2
+
+   by finding a record R and an object c := [xs:bs](Build_R params v1..vn)
+   with vi = (cstr us), for which we know that the i-th projection proji
+   satisfies
+
+      (proji params (c xs)) = (cstr us)
+
+   Rem: such objects, usable for conversion, are defined in the objdef
+   table; practically, it amounts to "canonically" equip t2 into a
+   object c in structure R (since, if c1 were not an evar, the
+   projection would have been reduced) *)
+
+let check_conv_record (t1,sk1) (t2,sk2) =
+    let proji = global_of_constr t1 in
+    let canon_s,sk2_effective =
+      try
+	match kind_of_term t2 with
+	  Prod (_,a,b) -> (* assert (l2=[]); *)
+      	  if dependent (mkRel 1) b then raise Not_found
+	  else lookup_canonical_conversion (proji, Prod_cs),(Stack.append_app [|a;pop b|] Stack.empty)
+	| Sort s ->
+	   lookup_canonical_conversion
+	     (proji, Sort_cs (family_of_sort s)),[]
+	| _ ->
+	   let c2 = global_of_constr t2 in
+	   lookup_canonical_conversion (proji, Const_cs c2),sk2
+      with Not_found ->
+	lookup_canonical_conversion (proji,Default_cs),[]
+    in
+    let { o_DEF = c; o_INJ=n; o_TABS = bs;
+          o_TPARAMS = params; o_NPARAMS = nparams; o_TCOMPS = us } = canon_s in
+    let params1, c1, extra_args1 =
+      match Stack.strip_n_app nparams sk1 with
+      | Some (params1, c1,extra_args1) -> params1, c1, extra_args1
+      | _ -> raise Not_found in
+    let us2,extra_args2 =
+      let l_us = List.length us in
+      if Int.equal l_us 0 then Stack.empty,sk2_effective
+      else match (Stack.strip_n_app (l_us-1) sk2_effective) with
+	   | None -> raise Not_found
+	   | Some (l',el,s') -> (l'@Stack.append_app [|el|] Stack.empty,s') in
+    (c,bs,(Stack.append_app_list params Stack.empty,params1),(Stack.append_app_list us Stack.empty,us2),(extra_args1,extra_args2),c1,
+    (n,Stack.zip(t2,sk2)))
+
+
 
 let rec evar_conv_x ts env evd pbty term1 term2 =
   let term1 = whd_head_evar evd term1 in
@@ -599,14 +603,14 @@ and conv_record trs env evd (c,bs,(params,params1),(us,us2),(ts,ts1),c1,(n,t2)) 
     ise_and evd'
       [(fun i ->
 	exact_ise_stack2 env i
-          (fun env' i' cpb x1 x -> evar_conv_x trs env' i' cpb x1 (substl ks x))
+          (fun env' i' cpb x1 x -> Munify.unify_evar_conv trs env' i' cpb x1 (substl ks x))
           params1 params);
        (fun i ->
 	 exact_ise_stack2 env i
-           (fun env' i' cpb u1 u -> evar_conv_x trs env' i' cpb u1 (substl ks u))
+           (fun env' i' cpb u1 u -> Munify.unify_evar_conv trs env' i' cpb u1 (substl ks u))
            us2 us);
-       (fun i -> evar_conv_x trs env i CONV c1 app);
-       (fun i -> exact_ise_stack2 env i (evar_conv_x trs) ts ts1)]
+       (fun i -> Munify.unify_evar_conv trs env i CONV c1 app);
+       (fun i -> exact_ise_stack2 env i (Munify.unify_evar_conv trs) ts ts1)]
   else UnifFailure(evd,(*dummy*)NotSameHead)
 
 (* We assume here |l1| <= |l2| *)

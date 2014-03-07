@@ -1578,6 +1578,7 @@ let internalize globalenv env allow_patvar lvar c =
 	GSort(loc,s)
     | CCast (loc, c1, c2) ->
         GCast (loc,intern env c1, Miscops.map_cast_type (intern_type env) c2)
+    | CRun (loc, c) -> GRun (loc, intern env c) (*BETA*)
 
   and intern_type env = intern (set_type_scope env)
 

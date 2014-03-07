@@ -155,6 +155,7 @@ Module MtacNotations.
 
 Notation "'M'" := Mtac.
 
+Definition type_of {A} (x : A) := A.
 Definition mtype_of {A} (x : M A) := A.
 Definition mtype_of_patt {A B t} (x : tpatt A B t) := B.
 
@@ -198,13 +199,13 @@ Notation "'_' =c> b " := (tele (fun x=> base x (fun _=>b%core) UniRed))
 Delimit Scope mtac_patt_scope with mtac_patt.
 
 Notation "'mmatch' t 'with' | p1 | .. | pn 'end'" := 
-  (tmatch (fun _=>_) t (cons p1%mtac_patt (.. (cons pn%mtac_patt nil) ..))) 
+  (@tmatch (type_of t) (fun _=>_) t (cons p1%mtac_patt (.. (cons pn%mtac_patt nil) ..))) 
     (at level 90, p1 at level 210, pn at level 210, only parsing).
 Notation "'mmatch' t 'return' 'M' p 'with' | p1 | .. | pn 'end'" := 
-  (tmatch (fun _=>p) t (@cons (tpatt _ (fun _=>p) _) p1%mtac_patt (.. (@cons (tpatt _ (fun _=>p) _) pn%mtac_patt nil) ..))) 
+  (@tmatch (type_of t) (fun _=>p) t (@cons (tpatt _ (fun _=>p) _) p1%mtac_patt (.. (@cons (tpatt _ (fun _=>p) _) pn%mtac_patt nil) ..))) 
     (at level 90, p1 at level 210, pn at level 210, only parsing).
 Notation "'mmatch' t 'as' x 'return' 'M' p 'with' | p1 | .. | pn 'end'" := 
-  (tmatch (fun x=>p) t (cons p1%mtac_patt (.. (cons pn%mtac_patt nil) ..))) 
+  (@tmatch (type_of t) (fun x=>p) t (cons p1%mtac_patt (.. (cons pn%mtac_patt nil) ..))) 
     (at level 90, p1 at level 210, pn at level 210, format
   "'[v' 'mmatch'  t  'as'  x  'return'  'M'  p  'with' '/' '|'  p1 '/' '|'  .. '/' '|'  pn '/' 'end' ']'").
 

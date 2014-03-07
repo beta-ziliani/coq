@@ -95,20 +95,18 @@ Module WithList.
     exact exception.
   Qed.
 
-  Program
   Definition lookup (p : Prop)  := 
     mfix f (s : list dyn) : M p :=
       mmatch s return M p with
-      | [x s'] (@Dyn p x) :: s' => ret x
-      | [d s'] d :: s' => f s'
+      | [x s'] (@Dyn p x) :: s' => ret x return M p
+      | [d s'] d :: s' => f s' return M p
       | _ => raise ProofNotFound
       end.
   
-  Program
   Definition tauto' :=
     mfix f (c : list dyn) (p : Prop) : M p :=
       mmatch p as p' return M p' with
-      | True => ret I 
+      | True => ret I
       | [p1 p2] p1 /\ p2 =>
            r1 <- f c p1 ;
            r2 <- f c p2 ;
@@ -137,11 +135,11 @@ Module WithList.
              raise ProofNotFound
            else
              ret (ex_intro q X r)
-      | [p':Prop] p' => lookup p' c
+      | [p':Prop] p' => lookup p' c : M p' return M _
       end.
   
   Definition tauto P := 
-    tauto' nil P.
+    @tauto' nil P.
 
 End WithList.
 
@@ -155,7 +153,6 @@ Module WithHash.
 
   Definition ctx := HashTbl.t Prop (fun x=>x).
 
-  Program
   Definition tauto' (c : ctx) :=
     mfix f (p : Prop) : M p :=
     mmatch p as p' return M p' with
@@ -184,7 +181,7 @@ Module WithHash.
     | [x:Prop] x => 
       mtry HashTbl.find c x
       with _ => raise ProofNotFound
-      end
+      end return M _
     end.
 
   Definition tauto P := 
@@ -217,16 +214,14 @@ Inductive Subst : Ctx -> Type :=
     fun C A B f => nu x, 
       ret (cp (fun s=>(cProof (f x) s))).
 
-  Program
   Definition lookup (p : Prop)  := 
     mfix f (s : list dyn) : M p :=
       mmatch s return M p with
-      | [x s'] (@Dyn p x) :: s' => ret x
-      | [d s'] d :: s' => f s'
+      | [x s'] (@Dyn p x) :: s' => ret x return M p
+      | [d s'] d :: s' => f s' return M p
       | _ => raise ProofNotFound
       end.
   
-  Program
   Definition tauto' :=
     mfix f (c : list dyn) (p : Prop) : M p :=
       mmatch p as p' return M p' with
@@ -259,11 +254,11 @@ Inductive Subst : Ctx -> Type :=
              raise ProofNotFound
            else
              ret (ex_intro q X r)
-      | [p':Prop] p' => lookup p' c
+      | [p':Prop] p' => lookup p' c return M _
       end.
   
   Definition tauto P := 
-    tauto' nil P.
+    @tauto' nil P.
 
 End WithCT.
 
@@ -297,7 +292,7 @@ Canonical Structure dummy0 := Dummy 0.
 
 Canonical Structure dummyS (d : dummy) := Dummy (S (value d)).
 
-Definition testDummyCS n :=
+Definition testDummyCS (n : nat) :=
   mmatch n with
   | [d] value d =m> ret d
   | _ => raise exception
@@ -357,7 +352,7 @@ Definition checkFun (f : Type) :=
 
 Check (run (checkFun Set)).
 
-
+(*
 Definition test :=
   let count_patt (c : nat -> forall A, M A -> M nat)  A B t :=
       mfix cp (p : tpatt A B t) n :=
@@ -377,7 +372,7 @@ Definition test :=
   in
   tfix3 _ (fun count (n : nat) (A : Type) (f : M A) =>
   match f with
-  | tmatch A B t ps => count_patts count A B t ps n
+  | tmatch B t ps => count_patts count _ B t ps n
   | _ => ret n
   end).
 
@@ -388,4 +383,4 @@ Definition testmm := (@test 0 _ (
   | [a] a => ret 2
   end)).
 
-Check (run testmm).
+Check (run testmm).*)

@@ -214,7 +214,11 @@ GEXTEND Gram
       | "$("; tac = Tactic.tactic; ")$" ->
           let arg = Genarg.in_gen (Genarg.rawwit Constrarg.wit_tactic) tac in
           CHole (!@loc, None, Some arg)
+      | run(*BETA*); c = operconstr LEVEL "200" -> CRun (!@loc, c)
       ] ]
+  ;
+  run: (*BETA*)
+    [ [ "run" -> () ] ]
   ;
   forall:
     [ [ "forall" -> () ] ]
