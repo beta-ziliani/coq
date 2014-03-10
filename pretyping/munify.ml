@@ -556,13 +556,17 @@ and try_step conv_t ts env sigma0 (c, l as t) (c', l' as t') =
 *)
   | _, _ -> reduce_iota_and_unify ts env sigma0 t t'
 
-and reduce_iota_and_unify ts env sigma (_, l1 as t1) (_, l2 as t2) =
-  let t1, t2 = applist t1, applist t2 in
-  let t1' = Reductionops.whd_betadeltaiota env sigma t1 in
-  let t2' = Reductionops.whd_betadeltaiota env sigma t2 in
-  if t1 <> t1' || t2 <> t2' then
-    unify' ts env sigma t1' t2'
-  else err sigma
+and reduce_iota_and_unify ts env sigma t t' =
+  let t, t' = applist t, applist t' in
+  let t2 = Reductionops.whd_betadeltaiota env sigma t' in
+  if t' <> t2 then
+    unify' ts env sigma t t2
+  else
+    let t1 = Reductionops.whd_betadeltaiota env sigma t in
+    if t <> t1 then
+      unify' ts env sigma t1 t'
+    else
+      err sigma
 
 and instantiate' ts conv_t env sigma0 (ev, subs as uv) args (h, args' as t) =
   let evi = Evd.find_undefined sigma0 ev in
