@@ -442,7 +442,7 @@ let rec unify' ?(conv_t=Reduction.CONV) ts env sigma0 t t' =
 	ise_array2 sigma2 (fun i -> unify' ts env i) cl1 cl2
       ) 
       ||= fun _ ->
-	reduce_iota_and_unify ts env sigma0 tapp tapp'
+	reduce_and_unify ts env sigma0 tapp tapp'
 
     | Fix (li1, (_, tys1, bds1 as recdef1)), Fix (li2, (_, tys2, bds2)) 
       when li1 = li2 && l = [] && l' = [] ->
@@ -554,16 +554,18 @@ and try_step conv_t ts env sigma0 (c, l as t) (c', l' as t') =
   | _, Lambda (name, t1, c1) when l' = [] ->
       eta_match ts env sigma0 (name, t1, c1) t
 *)
-  | _, _ -> reduce_iota_and_unify ts env sigma0 t t'
+  | _, _ -> reduce_and_unify ts env sigma0 t t'
 
-and reduce_iota_and_unify ts env sigma t t' =
+and reduce_and_unify ts env sigma t t' =
   let t, t' = applist t, applist t' in
   let t2 = Reductionops.whd_betadeltaiota env sigma t' in
   if t' <> t2 then
+    (* WhdR *)
     unify' ts env sigma t t2
   else
     let t1 = Reductionops.whd_betadeltaiota env sigma t in
     if t <> t1 then
+      (* WhdL *)
       unify' ts env sigma t1 t'
     else
       err sigma
