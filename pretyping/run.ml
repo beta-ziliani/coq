@@ -1,6 +1,7 @@
 open List
 open String
 
+open Pp
 open Term
 open Termops
 open Reductionops
@@ -536,6 +537,7 @@ let runmatch (env, sigma as ctxt) t ty patts =
    
     
 let print env sigma s = Printf.printf "[DEBUG] %s\n" (CoqString.from_coq env sigma s)
+let print_term t = Printf.printf "[DEBUG] "; msg (Termops.print_constr t); Printf.printf "\n"
 
 exception AbstractingArrayType
 
@@ -752,6 +754,11 @@ let rec run' (env, sigma, undo as ctxt) t =
       | 24 -> assert_args 2; (* length *)
 	let i = nth 1 in
 	return sigma (ArrayRefs.length env sigma i)
+
+      | 25 -> assert_args 2; (* print term *)
+    let t = nth 1 in
+    print_term t;
+	return sigma (Lazy.force CoqUnit.mkTT)
 
       | _ ->
 	Exceptions.raise "I have no idea what is this construct of T that you have here"
