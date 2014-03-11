@@ -109,7 +109,7 @@ Inductive Mtac : Type -> Prop :=
 | array_get : forall {A}, array A -> N -> Mtac A
 | array_set : forall {A}, array A -> N -> A -> Mtac unit
 | array_length : forall {A}, array A -> Mtac N
-
+| print_term : forall {A}, A -> Mtac unit 
 | nu_abs : forall {A B}, (forall x : A, Mtac (B x)) -> Mtac (forall x, B x)
 
 with tpatt : forall A (B : A -> Type) (t : A), Type := 
