@@ -596,7 +596,17 @@ and instantiate' ts conv_t env sigma0 (ev, subs as uv) args (h, args' as t) =
   in 
   match res with
     | Some r -> r
-    | None -> err sigma0
+    | None -> 
+      let n1, n2 =  List.length args, List.length args' in
+      if 0 < n1 && n1 <= n2 then
+        (* Meta-FO *)
+        (* Try first-order unification *)
+	(* (heuristic that gives acceptable results in practice) *)
+	let (deb2,rest2) = Util.list_chop (n2-n1) args' in
+        (* First compare extra args for better failure message *)
+        ise_list2 sigma0 (fun i -> unify' ts env i) args rest2 &&= 
+            fun sigma1 -> unify' ~conv_t:conv_t ts env sigma1 (mkEvar uv) (applist(h,deb2))
+      else err sigma0
 (*
   in
   match res with
