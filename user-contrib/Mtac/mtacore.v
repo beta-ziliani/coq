@@ -146,6 +146,8 @@ Arguments eval {A} _ {_}.
 
 Hint Extern 20 (runner ?f) => (exact (Build_runner f (run f)))  : typeclass_instances.
 
+Definition lift {A} (f : Mtac A) (v : A) := A.
+
 End Mtac.
 
 Export Mtac.  

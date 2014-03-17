@@ -862,3 +862,10 @@ let pretype_run pretype coerce_to_tycon tycon env evdref lvar loc c =
     | Err e -> 
       Pretype_errors.error_user_exception loc env !evdref e
 
+let munify_run env evd f = 
+  match run (env, evd) f with
+    | Val v -> Some v
+    | _ -> None
+
+let _ = Munify.set_run munify_run
+let _ = Munify.set_lift_constr (MtacNames.mkLazyConstr "lift")

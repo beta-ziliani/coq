@@ -360,7 +360,11 @@ let check_conv_record (t1,l1) (t2,l2) =
   with Failure _ | Not_found ->
     raise Not_found
 
+let run_function = ref (fun _ _ _ -> None)
+let set_run f = run_function := f
 
+let lift_constr = ref (lazy mkProp)
+let set_lift_constr c = lift_constr := c
 
 (* pre: c and c' are in whdnf with our definition of whd *)
 let rec unify' ?(conv_t=Reduction.CONV) ts env sigma0 t t' =
@@ -452,6 +456,17 @@ let rec unify' ?(conv_t=Reduction.CONV) ts env sigma0 t t' =
     | _, _  ->
       (
 	if (isConst c || isConst c') && not (eq_constr c c') then
+         if eq_constr c (Lazy.force !lift_constr) && List.length l = 3 then
+           run_and_unify ts env sigma0 l (applist tapp')
+         else if eq_constr c' (Lazy.force !lift_constr) && List.length l' = 3 then
+           run_and_unify ts env sigma0 l' (applist tapp)
+         else
+           err sigma0
+       else
+         err sigma0
+      ) ||= fun _ ->
+      (
+       if (isConst c || isConst c') && not (eq_constr c c') then
 	  try conv_record ts env sigma0 tapp tapp'
 	  with Not_found ->
 	    try conv_record ts env sigma0 tapp' tapp
@@ -472,6 +487,13 @@ let rec unify' ?(conv_t=Reduction.CONV) ts env sigma0 t t' =
 	try_step conv_t ts env sigma0 tapp tapp'
       )
 
+and run_and_unify ts env sigma0 args ty =
+  let a, f, v = List.nth args 0, List.nth args 1, List.nth args 2 in
+  unify' ~conv_t:Reduction.CUMUL ts env sigma0 a ty &&= fun sigma1 ->
+  match !run_function env sigma1 f with
+  | Some (sigma2, v') -> unify' ts env sigma2 v v'
+  | _ -> err sigma0
+
 and one_is_meta ts conv_t env sigma0 (c, l as t) (c', l' as t') =
   if isEvar c && isEvar c' then
     let (k1, s1 as e1), (k2, s2 as e2) = destEvar c, destEvar c' in
@@ -488,14 +510,20 @@ and one_is_meta ts conv_t env sigma0 (c, l as t) (c', l' as t') =
 	instantiate ts conv_t env sigma0 e2 l' t ||= fun _ ->
 	instantiate ts conv_t env sigma0 e1 l t'
   else
-    (* Meta-InstL *)
     if isEvar c then
-      let e1 = destEvar c in
-      instantiate ts conv_t env sigma0 e1 l t'
+      if eq_constr c' (Lazy.force !lift_constr) && List.length l' = 3 then
+        run_and_unify ts env sigma0 l' (applist t)
+      else
+	(* Meta-InstL *)
+	let e1 = destEvar c in
+	instantiate ts conv_t env sigma0 e1 l t'
     else
-      (* Meta-InstR *)
-      let e2 = destEvar c' in
-      instantiate ts conv_t env sigma0 e2 l' t 
+      if eq_constr c (Lazy.force !lift_constr) && List.length l = 3 then
+        run_and_unify ts env sigma0 l (applist t')
+      else
+        (* Meta-InstR *)
+	let e2 = destEvar c' in
+	instantiate ts conv_t env sigma0 e2 l' t 
 
 and try_step conv_t ts env sigma0 (c, l as t) (c', l' as t') =
   match (kind_of_term c, kind_of_term c') with

@@ -15,6 +15,12 @@ val unfold_value : Names.transparent_state ->
   Environ.env -> Evd.evar_map -> 
   Term.constr -> Term.constr
 
+val set_run : (Environ.env -> Evd.evar_map -> Term.constr -> 
+  (Evd.evar_map * Term.constr) option) -> unit
+
+val set_lift_constr : constr Lazy.t -> unit
+
+
 (* DEBUG *)
 val id_substitution : Sign.named_context -> Term.constr array
 

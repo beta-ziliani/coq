@@ -1,5 +1,32 @@
 Require Import mtac.
 
+Set Implicit Arguments.
+Structure param A (p: A) := Param { valof : A }. 
+Canonical Structure default {A} (p : A) := Param p p.
+
+Structure glue (p : nat) (ghost : Type) :=  Glue { 
+  gvalof :> param p;
+  _ : {q | valof gvalof = q}
+}.
+
+Definition aMtactic (p : nat) : M {q | p = q} := 
+  mmatch p with
+  | 5 => ret (exist _ 5 (eq_refl _))
+  end.
+
+Canonical Structure dummy p r := @Glue p (lift (aMtactic p) r) (default p) r.
+
+Definition myeq p A (g : glue p A) :=
+  match g as g' return {q | valof g' = q} with Glue _ eq => eq end.
+
+Goal {q | 5 = q}.
+refine (myeq _).
+Abort.
+
+Definition myeval A (f : M A) (v : A) : lift f v := v.
+
+
+
 (* Set Printing Existential Instances. *)
 
 Definition test1 := run (
