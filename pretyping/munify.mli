@@ -83,3 +83,12 @@ val ise_list2 : Evd.evar_map  ->
   Term.constr list -> Term.constr list -> bool * Evd.evar_map
 
 val debug : Term.constr list -> unit
+
+val one_is_meta : Names.transparent_state ->
+  Evd.conv_pb -> Environ.env ->
+  Evd.evar_map -> Term.constr * Term.types list ->
+  Term.constr * Term.types list -> bool * Evd.evar_map
+
+val is_variable_subs : Term.types array -> bool
+
+val is_variable_args : Term.types list -> bool

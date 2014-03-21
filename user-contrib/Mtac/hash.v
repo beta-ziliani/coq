@@ -43,6 +43,15 @@ Module ListMtactics.
       | _ =m> raise NotFound
       end.
 
+  Program
+  Definition remove {A} {B : A -> Type} (x : A) :=
+    mfix f (s : list (sigT B)) :=
+      mmatch s with
+      | [y s'] (existT B x y :: s') =m> ret s'
+      | [y s'] (y :: s') =m> r <- f s'; ret (y :: r)
+      | _ =m> raise NotFound
+      end.
+
 End ListMtactics.
 
 Module HashTbl.
@@ -126,11 +135,10 @@ Module HashTbl.
     rl ::= new_load.
 
   Definition find {A B} (h : t A B) (x : A) : M (B x) :=
-    x' <- ret x;
     let (_, ra) := h in
     a <- !ra;
     size <- Array.length a;
-    i <- hash x' size;
+    i <- hash x size;
     l <- Array.get a i;
     mtry
       ListMtactics.find x l
@@ -138,5 +146,17 @@ Module HashTbl.
       raise NotFound
     end.
 
+  Definition remove {A B} (h : t A B) (x : A) : M unit :=
+    let (rl, ra) := h in
+    a <- !ra;
+    size <- Array.length a;
+    i <- hash x size;
+    l <- Array.get a i;
+    l' <- ListMtactics.remove x l;
+    Array.set a i l';;
+    load <- !rl;
+    new_load <- retS (N.pred load);
+    rl ::= new_load.
+    
   
 End HashTbl.

@@ -366,6 +366,10 @@ let set_run f = run_function := f
 let lift_constr = ref (lazy mkProp)
 let set_lift_constr c = lift_constr := c
 
+let is_lift c = 
+  try eq_constr c (Lazy.force !lift_constr)
+  with Not_found -> false
+
 (* pre: c and c' are in whdnf with our definition of whd *)
 let rec unify' ?(conv_t=Reduction.CONV) ts env sigma0 t t' =
   let t = Evarutil.whd_head_evar sigma0 t in
@@ -456,9 +460,9 @@ let rec unify' ?(conv_t=Reduction.CONV) ts env sigma0 t t' =
     | _, _  ->
       (
 	if (isConst c || isConst c') && not (eq_constr c c') then
-         if eq_constr c (Lazy.force !lift_constr) && List.length l = 3 then
+         if is_lift c && List.length l = 3 then
            run_and_unify ts env sigma0 l (applist tapp')
-         else if eq_constr c' (Lazy.force !lift_constr) && List.length l' = 3 then
+         else if is_lift c' && List.length l' = 3 then
            run_and_unify ts env sigma0 l' (applist tapp)
          else
            err sigma0
@@ -511,14 +515,14 @@ and one_is_meta ts conv_t env sigma0 (c, l as t) (c', l' as t') =
 	instantiate ts conv_t env sigma0 e1 l t'
   else
     if isEvar c then
-      if eq_constr c' (Lazy.force !lift_constr) && List.length l' = 3 then
+      if is_lift c' && List.length l' = 3 then
         run_and_unify ts env sigma0 l' (applist t)
       else
 	(* Meta-InstL *)
 	let e1 = destEvar c in
 	instantiate ts conv_t env sigma0 e1 l t'
     else
-      if eq_constr c (Lazy.force !lift_constr) && List.length l = 3 then
+      if is_lift c && List.length l = 3 then
         run_and_unify ts env sigma0 l (applist t')
       else
         (* Meta-InstR *)

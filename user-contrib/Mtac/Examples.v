@@ -1,5 +1,8 @@
 Require Import mtac.
+Require Import String.
+Require Import hash.
 
+(** Simple example of executing a Mtactic from a CS *)
 Set Implicit Arguments.
 Structure param A (p: A) := Param { valof : A }. 
 Canonical Structure default {A} (p : A) := Param p p.
@@ -22,10 +25,6 @@ Definition myeq p A (g : glue p A) :=
 Goal {q | 5 = q}.
 refine (myeq _).
 Abort.
-
-Definition myeval A (f : M A) (v : A) : lift f v := v.
-
-
 
 (* Set Printing Existential Instances. *)
 
@@ -202,8 +201,8 @@ Module WithHash.
     | [p1 p2 : Prop] p1 -> p2 =>
          nu (x:p1),
            HashTbl.add c p1 x;;
-           r <- f p2;
-           abs x r
+           mtry r <- f p2; abs x r
+           with [e] e => HashTbl.remove c p1;; raise e end
     | [A (q:A -> Prop)] (forall x:A, q x) =>
          nu (x:A),
            r <- f (q x);
@@ -219,6 +218,13 @@ Module WithHash.
     tauto' c P.
 
 End WithHash.
+
+
+Example should_fail : forall (P Q : Prop), (P -> Q) \/ (Q -> P).
+Proof.
+  Fail refine (run (WithHash.tauto _)).
+  (* Should say "WithHash.ProofNotFound" *)
+Abort.
 
 
 Module WithCT.
