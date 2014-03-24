@@ -27,14 +27,26 @@ refine (myeq _).
 Abort.
 
 (* Set Printing Existential Instances. *)
+Set Munify Debug.
 
-Definition test1 := run (
+Check (run (mmatch 5 + 5 with | [f] S (S (S (S f))) => ret true end)).
+
+Fail Definition test1 := run (
   mmatch id 0 with
   | [f (x : nat)] f x =m> ret true
   end
 ).
 
 Print test1.
+
+Definition test2 := run (
+  mmatch let x := 0 in S x with
+  | [f] let x := 0 in f x =m> ret f
+  end
+).
+
+Print test2.
+
 
 Set Implicit Arguments.
 

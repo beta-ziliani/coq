@@ -20,6 +20,9 @@ val set_run : (Environ.env -> Evd.evar_map -> Term.constr ->
 
 val set_lift_constr : constr Lazy.t -> unit
 
+val get_debug : unit -> bool
+
+val set_debug : bool -> unit
 
 (* DEBUG *)
 val id_substitution : Sign.named_context -> Term.constr array
@@ -42,14 +45,14 @@ val fill_lambdas_invert_types :
   Term.constr ->
   Term.types list -> Term.types list -> Term.constr option
 
-val try_step :  Evd.conv_pb ->
+val try_step :  int -> Evd.conv_pb ->
   Names.transparent_state ->
   Environ.env ->
   Evd.evar_map ->
   Term.constr * Term.constr list ->
   Term.constr * Term.constr list -> bool * Evd.evar_map
 
-val instantiate' :
+val instantiate' : int ->
   Names.transparent_state ->
   Evd.conv_pb ->
   Environ.env ->
@@ -58,14 +61,14 @@ val instantiate' :
   Term.types list ->
   Term.constr * Term.types list -> bool * Evd.evar_map
 
-val meta_fo :
+val meta_fo : int ->
   Names.transparent_state ->
   Environ.env ->
   Evd.evar_map ->
   Term.existential * Term.types list ->
   Term.constr * Term.types list -> bool * Evd.evar_map
 
-val conv_record : Names.transparent_state ->
+val conv_record : int -> Names.transparent_state ->
   Environ.env ->
   Evd.evar_map ->
   Term.constr * Term.types list ->
@@ -82,9 +85,7 @@ val ise_list2 : Evd.evar_map  ->
   (Evd.evar_map -> Term.constr -> Term.constr -> bool * Evd.evar_map) -> 
   Term.constr list -> Term.constr list -> bool * Evd.evar_map
 
-val debug : Term.constr list -> unit
-
-val one_is_meta : Names.transparent_state ->
+val one_is_meta : int -> Names.transparent_state ->
   Evd.conv_pb -> Environ.env ->
   Evd.evar_map -> Term.constr * Term.types list ->
   Term.constr * Term.types list -> bool * Evd.evar_map

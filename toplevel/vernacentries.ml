@@ -1194,6 +1194,16 @@ let _ =
       optread  = (fun () -> get_debug () <> Tactic_debug.DebugOff);
       optwrite = vernac_debug }
 
+(* BETA *)
+let _ =
+  declare_bool_option
+    { optsync  = false;
+      optdepr  = false;
+      optname  = "Munify debug";
+      optkey   = ["Munify";"Debug"];
+      optread  = Munify.get_debug;
+      optwrite = Munify.set_debug }
+
 let _ =
   declare_bool_option
     { optsync  = true;
