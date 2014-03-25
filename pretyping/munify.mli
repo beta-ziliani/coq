@@ -45,12 +45,14 @@ val fill_lambdas_invert_types :
   Term.constr ->
   Term.types list -> Term.types list -> Term.constr option
 
+(*
 val try_step :  int -> Evd.conv_pb ->
   Names.transparent_state ->
   Environ.env ->
   Evd.evar_map ->
   Term.constr * Term.constr list ->
   Term.constr * Term.constr list -> bool * Evd.evar_map
+  *)
 
 val instantiate' : int ->
   Names.transparent_state ->

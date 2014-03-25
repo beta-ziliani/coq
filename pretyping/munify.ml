@@ -374,18 +374,33 @@ let is_lift c =
   with Not_found -> false
 
 
+let rec pad l = if l <= 0 then () else (Printf.printf "_"; pad (l-1))
+
+let print_bar l = if l > 0 then Printf.printf "%s" "|" else ()
+    
+let debug_str s l =
+  if !debug then 
+    begin
+      print_bar l;
+      Printf.printf "%s\n" s
+    end
+  else
+    ()
+
 let debug_eq env c1 c2 l = 
-  if !debug then begin
-    begin if l > 0 then Printf.printf "%s" "|" else () end;
-    let rec pad l = if l <= 0 then () else (Printf.printf "-"; pad (l-1)) in
-    pad l;
-    Pp.msg (Termops.print_constr c1);
-    Printf.printf "%s" " =?= ";
-    Pp.msg (Termops.print_constr c2);
-    Printf.printf "\n" end
+  if !debug then 
+    begin
+      print_bar l;
+      pad l;
+      Pp.msg (Termops.print_constr c1);
+      Printf.printf "%s" " =?= ";
+      Pp.msg (Termops.print_constr c2);
+      Printf.printf "\n" 
+    end
   else
     ()
   
+type stucked = NotStucked | StuckedLeft | StuckedRight
 
 (* pre: c and c' are in whdnf with our definition of whd *)
 let rec unify' ?(conv_t=Reduction.CONV) dbg ts env sigma0 t t' =
@@ -547,7 +562,7 @@ and one_is_meta dbg ts conv_t env sigma0 (c, l as t) (c', l' as t') =
 	let e2 = destEvar c' in
 	instantiate dbg ts conv_t env sigma0 e2 l' t 
 
-and try_step dbg conv_t ts env sigma0 (c, l as t) (c', l' as t') =
+and try_step ?(stuck=NotStucked) dbg conv_t ts env sigma0 (c, l as t) (c', l' as t') =
   match (kind_of_term c, kind_of_term c') with
   (* Lam-BetaR *)
   | _, Lambda (_, _, trm) when l' <> [] ->
@@ -590,7 +605,42 @@ and try_step dbg conv_t ts env sigma0 (c, l as t) (c', l' as t') =
   | Var id1, _ when var_is_def ts env id1 ->
       transp_matchL ts env sigma0 id1 l (applist t') (unify' ~conv_t (dbg+1)) var_value
 
+  | _, Case _ | _, Fix _ when stuck <> StuckedRight ->
+    let t'' = applist t' in
+    let t2 = Reductionops.whd_betadeltaiota env sigma0 t'' in
+    if t'' <> t2 then
+      (* WhdR *)
+      unify' ~conv_t (dbg+1) ts env sigma0 (applist t) t2
+    else if stuck = NotStucked then
+      try_step ~stuck:StuckedRight dbg conv_t ts env sigma0 t t'
+    else err sigma0
+
+  | Case _, _ | Fix _, _ when stuck <> StuckedLeft ->
+    let t'' = applist t in
+    let t2 = Reductionops.whd_betadeltaiota env sigma0 t'' in
+    if t'' <> t2 then
+      (* WhdL *)
+      unify' ~conv_t (dbg+1) ts env sigma0 t2 (applist t')
+    else if stuck = NotStucked then
+      try_step ~stuck:StuckedLeft dbg conv_t ts env sigma0 t t'
+    else err sigma0
+
   (* Constants get unfolded after everything else *)
+  | _, Const c2 when const_is_def ts env c2 && stuck = NotStucked ->
+      if Recordops.is_canonical_projector (Libnames.global_of_constr c') then
+	try_step ~stuck:StuckedRight dbg conv_t ts env sigma0 t t'
+      else
+	transp_matchR ts env sigma0 c2 l' (applist t) (unify' ~conv_t (dbg+1)) const_value
+  | Const c1, _ when const_is_def ts env c1 && stuck = NotStucked ->
+      if Recordops.is_canonical_projector (Libnames.global_of_constr c) then
+	try_step ~stuck:StuckedLeft dbg conv_t ts env sigma0 t t'
+      else
+	transp_matchL ts env sigma0 c1 l (applist t') (unify' ~conv_t (dbg+1)) const_value
+  | _, Const c2 when const_is_def ts env c2 && stuck = StuckedLeft ->
+      transp_matchR ts env sigma0 c2 l' (applist t) (unify' ~conv_t (dbg+1)) const_value
+  | Const c1, _ when const_is_def ts env c1 && stuck = StuckedRight ->
+      transp_matchL ts env sigma0 c1 l (applist t') (unify' ~conv_t (dbg+1)) const_value
+
   | _, Const c2 when const_is_def ts env c2 ->
       transp_matchR ts env sigma0 c2 l' (applist t) (unify' ~conv_t (dbg+1)) const_value
   | Const c1, _ when const_is_def ts env c1 ->
@@ -604,7 +654,7 @@ and try_step dbg conv_t ts env sigma0 (c, l as t) (c', l' as t') =
   | _, Lambda (name, t1, c1) when l' = [] ->
       eta_match ts env sigma0 (name, t1, c1) t
 *)
-  | _, _ -> reduce_and_unify dbg ts env sigma0 t t'
+  | _, _ -> err sigma0 (* reduce_and_unify dbg ts env sigma0 t t' *)
 
 and reduce_and_unify dbg ts env sigma t t' =
   let t, t' = applist t, applist t' in

@@ -336,6 +336,8 @@ let declare_canonical_structure ref =
 let lookup_canonical_conversion (proj,pat) =
   List.assoc pat (Refmap.find proj !object_table)
 
+let is_canonical_projector proj = try Refmap.find proj !object_table; true with Not_found -> false
+
 let is_open_canonical_projection env sigma (c,args) =
   try
     let n = find_projection_nparams (global_of_constr c) in

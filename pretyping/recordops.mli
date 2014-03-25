@@ -83,3 +83,6 @@ val is_open_canonical_projection :
   Environ.env -> Evd.evar_map -> (constr * constr list) -> bool
 val canonical_projections : unit ->
   ((global_reference * cs_pattern) * obj_typ) list
+
+(* BETA *)
+val is_canonical_projector : global_reference -> bool

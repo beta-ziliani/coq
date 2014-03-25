@@ -2,6 +2,33 @@ Require Import mtac.
 Require Import String.
 Require Import hash.
 
+(* Testing unification of CS *)
+Structure astruct := Astruct { mynat : nat }.
+
+Canonical Structure str1 := Astruct 0.
+Definition test_unfoldingR :=
+  e <- evar astruct;
+  mmatch mynat e with
+  | pred 1 => ret true
+  end.
+Check (run test_unfoldingR).
+
+Definition test_unfoldingL :=
+  e <- evar astruct;
+  mmatch pred 1 with
+  | mynat e => ret true
+  end.
+Check (run test_unfoldingL).
+
+Definition test_castL :=
+  e <- evar nat;
+  f <- evar nat;
+  mmatch 0 with
+  | f : (fun _=>nat) 1 => ret true
+  end.
+
+Check (run test_castL).
+
 (** Simple example of executing a Mtactic from a CS *)
 Set Implicit Arguments.
 Structure param A (p: A) := Param { valof : A }. 
