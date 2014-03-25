@@ -725,7 +725,9 @@ and instantiate dbg ts conv_t env sigma
     (ev, subs as evsubs) args (h, args' as t) =
   if is_variable_subs subs then
     if is_variable_args args then
-      instantiate' dbg ts conv_t env sigma evsubs args t
+      try 
+	instantiate' dbg ts conv_t env sigma evsubs args t
+      with CannotPrune -> err sigma
     else 
       if should_try_fo args (h, args') then
 	(* Meta-FO *)

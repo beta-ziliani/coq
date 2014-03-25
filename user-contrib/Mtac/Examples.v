@@ -29,6 +29,9 @@ Definition test_castL :=
 
 Check (run test_castL).
 
+Drop.
+Definition testme b := match b return _ with true => 0 | _ => false end.
+
 (** Simple example of executing a Mtactic from a CS *)
 Set Implicit Arguments.
 Structure param A (p: A) := Param { valof : A }. 
