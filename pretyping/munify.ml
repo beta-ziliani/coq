@@ -113,60 +113,61 @@ let find_unique_var = find_unique isVar destVar
 let find_unique_rel = find_unique isRel destRel
 
 
-let var_is_def ts env var = 
-  if not (Closure.is_transparent_variable ts var) then 
-    false
-  else
-    let (_, v,_) = Environ.lookup_named var env in
+let has_definition ts env t = 
+  if isVar t then
+    let var = destVar t in
+    if not (Closure.is_transparent_variable ts var) then 
+      false
+    else
+      let (_, v,_) = Environ.lookup_named var env in
+      match v with
+	| Some _ -> true
+	| _ -> false
+  else if isRel t then
+    let n = destRel t in
+    let (_,v,_) = Environ.lookup_rel n env in
     match v with
       | Some _ -> true
       | _ -> false
-	
-let var_value env var = 
-  let (_, v,_) = Environ.lookup_named var env in
-  match v with
-  | Some c -> c
-  | _ -> assert false
-	
-let const_is_def ts env c = 
-  Closure.is_transparent_constant ts c && Environ.evaluable_constant c env
-    
-let const_value env c = Environ.constant_value env c
-    
-let rel_is_def ts env n =
-  let (_,v,_) = Environ.lookup_rel n env in
-  match v with
-  | Some _ -> true
-  | _ -> false
-	
-let rel_value env n =
-  let (_,v,_) = Environ.lookup_rel n env in 
-  match v with
-  | Some v -> (lift n) v
-  | _ -> assert false
+  else if isConst t then
+    let c = destConst t in
+    Closure.is_transparent_constant ts c && Environ.evaluable_constant c env
+  else
+    false
 
-let eq_rigid ts env sigma c l1 l2 unif get_value =
-  let v = get_value env c in 
-  unif ts env sigma (applist (v, l1)) (applist (v, l2))
-	
-let transp_matchL ts env sigma c l t unif get_value =
-  let v = get_value env c
+let get_definition env t =
+  if isVar t then
+    let var = destVar t in
+    let (_, v,_) = Environ.lookup_named var env in
+    match v with
+      | Some c -> c
+      | _ -> Util.anomaly "get_definition for var didn't have definition!"
+  else if isRel t then
+    let n = destRel t in
+    let (_,v,_) = Environ.lookup_rel n env in 
+    match v with
+      | Some v -> (lift n) v
+      | _ -> Util.anomaly "get_definition for rel didn't have definition!"
+  else if isConst t then
+    let c = destConst t in
+    Environ.constant_value env c
+  else
+    Util.anomaly "get_definition didn't have definition!"
+
+let try_unfolding ts env t =
+  if has_definition ts env t then
+    get_definition env t
+  else
+    t
+
+let transp_matchL ts env sigma c l t unif =
+  let v = get_definition env c
   in unif ts env sigma (applist (v, l)) t
     
-let transp_matchR ts env sigma c l t unif get_value =
-  let v = get_value env c
+let transp_matchR ts env sigma c l t unif =
+  let v = get_definition env c
   in unif ts env sigma t (applist (v, l))
 
-exception Unfoldable
-let unfold_value ts env sigma c =
-  if isVar c && var_is_def ts env (destVar c) then
-    var_value env (destVar c)
-  else if isRel c && rel_is_def ts env (destRel c) then
-    rel_value env (destRel c)
-  else if isConst c && const_is_def ts env (destConst c) then
-    const_value env (destConst c)
-  else
-    raise Unfoldable
 
 let (-.) n m =
   if n > m then n - m
@@ -611,26 +612,15 @@ and try_step ?(stuck=NotStucked) dbg conv_t ts env sigma0 (c, l as t) (c', l' as
     let t2 = applist t' in
     unify' ~conv_t (dbg+1) ts env sigma0 t1 t2
 
-(*
-  (* Rigid-Same-Delta *)	    
-  | Rel n1, Rel n2 when n1 = n2 && rel_is_def ts env n1 ->
-      eq_rigid ts env sigma0 n1 l l' (unify' ~conv_t (dbg+1)) rel_value
-  | Var id1, Var id2 when id1 = id2 && var_is_def ts env id1 -> 
-      eq_rigid ts env sigma0 id1 l l' (unify' ~conv_t (dbg+1)) var_value
-  | Const c1, Const c2 when Names.eq_constant c1 c2 && const_is_def ts env c1 ->
-      eq_rigid ts env sigma0 c1 l l' (unify' ~conv_t (dbg+1)) const_value
-*)
-
   (* Rigid-DeltaR *)
-  | _, Rel n2 when rel_is_def ts env n2 ->
-      transp_matchR ts env sigma0 n2 l' (applist t) (unify' ~conv_t (dbg+1)) rel_value
-  | _, Var id2 when var_is_def ts env id2 ->
-      transp_matchR ts env sigma0 id2 l' (applist t) (unify' ~conv_t (dbg+1)) var_value
+  | _, Rel _ 
+  | _, Var _ when has_definition ts env c' ->
+      transp_matchR ts env sigma0 c' l' (applist t) (unify' ~conv_t (dbg+1))
+
   (* Rigid-DeltaL *)
-  | Rel n1, _ when rel_is_def ts env n1 ->
-      transp_matchL ts env sigma0 n1 l (applist t') (unify' ~conv_t (dbg+1)) rel_value
-  | Var id1, _ when var_is_def ts env id1 ->
-      transp_matchL ts env sigma0 id1 l (applist t') (unify' ~conv_t (dbg+1)) var_value
+  | Rel _, _ 
+  | Var _, _ when has_definition ts env c ->
+      transp_matchL ts env sigma0 c l (applist t') (unify' ~conv_t (dbg+1))
 
   | _, Case _ | _, Fix _ when stuck <> StuckedRight ->
     let t'' = applist t' in
@@ -653,25 +643,25 @@ and try_step ?(stuck=NotStucked) dbg conv_t ts env sigma0 (c, l as t) (c', l' as
     else err sigma0
 
   (* Constants get unfolded after everything else *)
-  | _, Const c2 when const_is_def ts env c2 && stuck = NotStucked ->
+  | _, Const _ when has_definition ts env c' && stuck = NotStucked ->
       if is_stuck ts env sigma0 t' then
 	try_step ~stuck:StuckedRight dbg conv_t ts env sigma0 t t'
       else
-	transp_matchR ts env sigma0 c2 l' (applist t) (unify' ~conv_t (dbg+1)) const_value
-  | Const c1, _ when const_is_def ts env c1 && stuck = NotStucked ->
+	transp_matchR ts env sigma0 c' l' (applist t) (unify' ~conv_t (dbg+1))
+  | Const _, _ when has_definition ts env c && stuck = NotStucked ->
       if is_stuck ts env sigma0 t then
 	try_step ~stuck:StuckedLeft dbg conv_t ts env sigma0 t t'
       else
-	transp_matchL ts env sigma0 c1 l (applist t') (unify' ~conv_t (dbg+1)) const_value
-  | _, Const c2 when const_is_def ts env c2 && stuck = StuckedLeft ->
-      transp_matchR ts env sigma0 c2 l' (applist t) (unify' ~conv_t (dbg+1)) const_value
-  | Const c1, _ when const_is_def ts env c1 && stuck = StuckedRight ->
-      transp_matchL ts env sigma0 c1 l (applist t') (unify' ~conv_t (dbg+1)) const_value
+	transp_matchL ts env sigma0 c l (applist t') (unify' ~conv_t (dbg+1))
+  | _, Const _ when has_definition ts env c' && stuck = StuckedLeft ->
+      transp_matchR ts env sigma0 c' l' (applist t) (unify' ~conv_t (dbg+1)) 
+  | Const _, _ when has_definition ts env c && stuck = StuckedRight ->
+      transp_matchL ts env sigma0 c l (applist t') (unify' ~conv_t (dbg+1))
 
-  | _, Const c2 when const_is_def ts env c2 ->
-      transp_matchR ts env sigma0 c2 l' (applist t) (unify' ~conv_t (dbg+1)) const_value
-  | Const c1, _ when const_is_def ts env c1 ->
-      transp_matchL ts env sigma0 c1 l (applist t') (unify' ~conv_t (dbg+1)) const_value
+  | _, Const _ when has_definition ts env c' ->
+      transp_matchR ts env sigma0 c' l' (applist t) (unify' ~conv_t (dbg+1)) 
+  | Const _, _ when has_definition ts env c ->
+      transp_matchL ts env sigma0 c l (applist t') (unify' ~conv_t (dbg+1))
 
 (*      
   (* Lam-EtaL *)
@@ -691,13 +681,7 @@ and evar_apprec ts env evd stack c =
       | Evar (evk,_ as ev) when Evd.is_defined sigma evk ->
 	  aux (Evd.existential_value sigma ev, stack)
       | _ -> (t, Reductionops.list_of_stack stack)
-  in aux (unfold ts env c, Reductionops.append_stack_list stack Reductionops.empty_stack)
-
-and unfold ts env c =
-  if isConst c && const_is_def ts env (destConst c) then
-    const_value env (destConst c)
-  else
-    c
+  in aux (try_unfolding ts env c, Reductionops.append_stack_list stack Reductionops.empty_stack)
 
 and is_stuck ts env sigma (hd, args) =
   let (hd, args) = evar_apprec ts env sigma args hd in

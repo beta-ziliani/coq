@@ -10,11 +10,6 @@ val unify_evar_conv : ?conv_t:Evd.conv_pb ->
   Environ.env ->
   Evd.evar_map -> Term.types -> Term.types -> Evd.evar_map * bool
 
-
-val unfold_value : Names.transparent_state ->
-  Environ.env -> Evd.evar_map -> 
-  Term.constr -> Term.constr
-
 val set_run : (Environ.env -> Evd.evar_map -> Term.constr -> 
   (Evd.evar_map * Term.constr) option) -> unit
 
@@ -29,6 +24,10 @@ val set_use_munify : bool -> unit
 val get_debug : unit -> bool
 
 val set_debug : bool -> unit
+
+(* Doesn't belong here! *)
+val try_unfolding : Names.transparent_state -> Environ.env -> Term.constr -> Term.constr
+
 
 (* DEBUG *)
 val id_substitution : Sign.named_context -> Term.constr array

@@ -87,7 +87,7 @@ module ReductionStrategy = struct
       | Lambda (_, _, trm) when args <> [] -> 
         (subst1 (List.hd args) trm, List.tl args)
       | LetIn (_, trm, _, body) -> (subst1 trm body, args)
-      | Var _ | Rel _ | Const _ -> (Munify.unfold_value Closure.all_transparent env sigma h, args)
+      | Var _ | Rel _ | Const _ -> (Munify.try_unfolding Closure.all_transparent env h, args)
       | _ -> h, args
     in applist r
         
