@@ -1,9 +1,19 @@
+
+Set Munify Debug.
+Set Use Munify.
+Check (eq_refl : _ = nat).
+
 Structure Inner := mkI { is :> Type }.
 Structure Outer := mkO { os :> Inner }.
 Canonical Structure natInner := mkI nat.
 Canonical Structure natOuter := mkO natInner.
 Definition hidden_nat := nat.
 Axiom P : forall S : Outer, is (os S) -> Prop.
+
+Set Printing Implicit.
+Set Printing Coercions.
+Set Printing Existential Instances.
+
 Lemma test1 (n : hidden_nat) : P _ n.
 Admitted.
 

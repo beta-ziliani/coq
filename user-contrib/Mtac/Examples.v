@@ -29,8 +29,13 @@ Definition test_castL :=
 
 Check (run test_castL).
 
-Drop.
-Definition testme b := match b return _ with true => 0 | _ => false end.
+Structure dummy (f : nat -> nat) := Dummy { val_of : unit}.
+Require Import ssreflect ssrbool ssrnat ssrfun.
+Canonical blah := Dummy succn tt.
+
+Check (erefl _ : val_of (_ : dummy (fun x:nat=>succn x)) = tt).
+
+Definition testme b := match b return _ with true => 0 | _ => 1 end.
 
 (** Simple example of executing a Mtactic from a CS *)
 Set Implicit Arguments.

@@ -20,6 +20,12 @@ val set_run : (Environ.env -> Evd.evar_map -> Term.constr ->
 
 val set_lift_constr : constr Lazy.t -> unit
 
+
+val use_munify : unit -> bool
+
+val set_use_munify : bool -> unit
+
+
 val get_debug : unit -> bool
 
 val set_debug : bool -> unit
@@ -45,14 +51,18 @@ val fill_lambdas_invert_types :
   Term.constr ->
   Term.types list -> Term.types list -> Term.constr option
 
-(*
-val try_step :  int -> Evd.conv_pb ->
-  Names.transparent_state ->
-  Environ.env ->
-  Evd.evar_map ->
-  Term.constr * Term.constr list ->
-  Term.constr * Term.constr list -> bool * Evd.evar_map
-  *)
+type stucked = NotStucked | StuckedLeft | StuckedRight
+type direction = DirNormal | DirOpposite
+
+val try_step :
+           ?stuck:stucked ->
+           int ->
+           Evd.conv_pb ->
+           Names.transparent_state ->
+           Environ.env ->
+           Evd.evar_map ->
+           Term.constr * Term.constr list ->
+           Term.constr * Term.constr list -> bool * Evd.evar_map
 
 val instantiate' : int ->
   Names.transparent_state ->
@@ -61,7 +71,7 @@ val instantiate' : int ->
   Evd.evar_map ->
   Evd.evar * Term.types array ->
   Term.types list ->
-  Term.constr * Term.types list -> bool * Evd.evar_map
+  Term.constr * Term.types list -> direction -> bool * Evd.evar_map
 
 val meta_fo : int ->
   Names.transparent_state ->

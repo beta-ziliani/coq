@@ -564,6 +564,17 @@ and conv_record trs env evd (c,bs,(params,params1),(us,us2),(ts,ts1),c1,(n,t2)) 
 	 (i', ev :: ks, m - 1))
       (evd,[],List.length bs - 1) bs
   in
+  begin
+  if Munify.get_debug () then
+  begin
+     Printf.printf "%s" "CS: ";
+     Pp.msg (Termops.print_constr c1);
+     Printf.printf "%s" " should be equal to ";
+     Pp.msg (Termops.print_constr (applist (c,(List.rev ks))));
+     Printf.printf "\n";
+  end
+  else ()
+  end;
   ise_and evd'
     [(fun i ->
        ise_list2 i
@@ -876,26 +887,32 @@ let consider_remaining_unif_problems ?(ts=full_transparent_state) env evd =
 
 (* Main entry points *)
 
+let evar_conv_munify ts env evd c =
+  if Munify.use_munify () then
+    Munify.unify_evar_conv ~conv_t:c ts env evd
+  else
+    evar_conv_x ts env evd c
+
 let the_conv_x ?(eta=true) ?(ts=full_transparent_state) env t1 t2 evd =
   use_eta := eta;
-  match evar_conv_x ts env evd CONV  t1 t2 with
+  match evar_conv_munify ts env evd CONV  t1 t2 with
       (evd',true) -> evd'
     | _ -> raise Reduction.NotConvertible
 
 let the_conv_x_leq ?(ts=full_transparent_state) env t1 t2 evd =
   use_eta := true;
-  match evar_conv_x ts env evd CUMUL t1 t2 with
+  match evar_conv_munify ts env evd CUMUL t1 t2 with
       (evd', true) -> evd'
     | _ -> raise Reduction.NotConvertible
 
 let e_conv ?(ts=full_transparent_state) env evdref t1 t2 =
   use_eta := true;
-  match evar_conv_x ts env !evdref CONV t1 t2 with
+  match evar_conv_munify ts env !evdref CONV t1 t2 with
       (evd',true) -> evdref := evd'; true
     | _ -> false
 
 let e_cumul ?(ts=full_transparent_state) env evdref t1 t2 =
   use_eta := true;
-  match evar_conv_x ts env !evdref CUMUL t1 t2 with
+  match evar_conv_munify ts env !evdref CUMUL t1 t2 with
       (evd',true) -> evdref := evd'; true
     | _ -> false

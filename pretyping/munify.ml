@@ -2,10 +2,34 @@ open Term
 open Recordops
 
 let debug = ref false
+let munify_on = ref false
+
+let use_munify () = !munify_on
+let set_use_munify b = munify_on := b
 
 let set_debug b = debug := b
 
 let get_debug () = !debug
+
+let _ = Goptions.declare_bool_option {
+  Goptions.optsync = false; Goptions.optdepr = false;
+  Goptions.optname =
+    "";
+  Goptions.optkey = ["Use";"Munify"];
+  Goptions.optread = use_munify;
+  Goptions.optwrite = set_use_munify;
+}
+
+let _ = Goptions.declare_bool_option {
+  Goptions.optsync  = false;
+  Goptions.optdepr  = false;
+  Goptions.optname  = "Munify debug";
+  Goptions.optkey   = ["Munify";"Debug"];
+  Goptions.optread  = get_debug;
+  Goptions.optwrite = set_debug 
+}
+
+
 
 let (>>=) opt f = 
   match opt with
@@ -49,9 +73,9 @@ let (||=) opt f =
   | (false, _) -> f ()
   | _ -> opt
 
-let success s = (true, s)
+let success s = begin if !debug then Printf.printf "ok\n" else () end;  (true, s)
 
-let err s = (false, s)
+let err s = begin if !debug then Printf.printf "err\n" else () end ; (false, s)
 
 
 let id_substitution nc = 
@@ -401,6 +425,7 @@ let debug_eq env c1 c2 l =
     ()
   
 type stucked = NotStucked | StuckedLeft | StuckedRight
+type direction = DirNormal | DirOpposite
 
 (* pre: c and c' are in whdnf with our definition of whd *)
 let rec unify' ?(conv_t=Reduction.CONV) dbg ts env sigma0 t t' =
@@ -541,11 +566,11 @@ and one_is_meta dbg ts conv_t env sigma0 (c, l as t) (c', l' as t') =
     else
       (* Meta-Meta *)
       if k1 > k2 then
-	instantiate dbg ts conv_t env sigma0 e1 l t' ||= fun _ ->
-	instantiate dbg ts conv_t env sigma0 e2 l' t
+	instantiate dbg ts conv_t env sigma0 e1 l t' DirNormal ||= fun _ ->
+	instantiate dbg ts conv_t env sigma0 e2 l' t DirOpposite
       else
-	instantiate dbg ts conv_t env sigma0 e2 l' t ||= fun _ ->
-	instantiate dbg ts conv_t env sigma0 e1 l t'
+	instantiate dbg ts conv_t env sigma0 e2 l' t DirOpposite ||= fun _ ->
+	instantiate dbg ts conv_t env sigma0 e1 l t' DirNormal
   else
     if isEvar c then
       if is_lift c' && List.length l' = 3 then
@@ -553,14 +578,14 @@ and one_is_meta dbg ts conv_t env sigma0 (c, l as t) (c', l' as t') =
       else
 	(* Meta-InstL *)
 	let e1 = destEvar c in
-	instantiate dbg ts conv_t env sigma0 e1 l t'
+	instantiate dbg ts conv_t env sigma0 e1 l t' DirNormal
     else
       if is_lift c && List.length l = 3 then
         run_and_unify dbg ts env sigma0 l (applist t')
       else
         (* Meta-InstR *)
 	let e2 = destEvar c' in
-	instantiate dbg ts conv_t env sigma0 e2 l' t 
+	instantiate dbg ts conv_t env sigma0 e2 l' t DirOpposite
 
 and try_step ?(stuck=NotStucked) dbg conv_t ts env sigma0 (c, l as t) (c', l' as t') =
   match (kind_of_term c, kind_of_term c') with
@@ -586,6 +611,7 @@ and try_step ?(stuck=NotStucked) dbg conv_t ts env sigma0 (c, l as t) (c', l' as
     let t2 = applist t' in
     unify' ~conv_t (dbg+1) ts env sigma0 t1 t2
 
+(*
   (* Rigid-Same-Delta *)	    
   | Rel n1, Rel n2 when n1 = n2 && rel_is_def ts env n1 ->
       eq_rigid ts env sigma0 n1 l l' (unify' ~conv_t (dbg+1)) rel_value
@@ -593,6 +619,7 @@ and try_step ?(stuck=NotStucked) dbg conv_t ts env sigma0 (c, l as t) (c', l' as
       eq_rigid ts env sigma0 id1 l l' (unify' ~conv_t (dbg+1)) var_value
   | Const c1, Const c2 when Names.eq_constant c1 c2 && const_is_def ts env c1 ->
       eq_rigid ts env sigma0 c1 l l' (unify' ~conv_t (dbg+1)) const_value
+*)
 
   (* Rigid-DeltaR *)
   | _, Rel n2 when rel_is_def ts env n2 ->
@@ -627,12 +654,12 @@ and try_step ?(stuck=NotStucked) dbg conv_t ts env sigma0 (c, l as t) (c', l' as
 
   (* Constants get unfolded after everything else *)
   | _, Const c2 when const_is_def ts env c2 && stuck = NotStucked ->
-      if Recordops.is_canonical_projector (Libnames.global_of_constr c') then
+      if is_stuck ts env sigma0 t' then
 	try_step ~stuck:StuckedRight dbg conv_t ts env sigma0 t t'
       else
 	transp_matchR ts env sigma0 c2 l' (applist t) (unify' ~conv_t (dbg+1)) const_value
   | Const c1, _ when const_is_def ts env c1 && stuck = NotStucked ->
-      if Recordops.is_canonical_projector (Libnames.global_of_constr c) then
+      if is_stuck ts env sigma0 t then
 	try_step ~stuck:StuckedLeft dbg conv_t ts env sigma0 t t'
       else
 	transp_matchL ts env sigma0 c1 l (applist t') (unify' ~conv_t (dbg+1)) const_value
@@ -656,6 +683,33 @@ and try_step ?(stuck=NotStucked) dbg conv_t ts env sigma0 (c, l as t) (c', l' as
 *)
   | _, _ -> err sigma0 (* reduce_and_unify dbg ts env sigma0 t t' *)
 
+and evar_apprec ts env evd stack c =
+  let sigma = evd in
+  let rec aux s =
+    let (t,stack) = Reductionops.whd_betaiota_deltazeta_for_iota_state ts env sigma s in
+    match kind_of_term t with
+      | Evar (evk,_ as ev) when Evd.is_defined sigma evk ->
+	  aux (Evd.existential_value sigma ev, stack)
+      | _ -> (t, Reductionops.list_of_stack stack)
+  in aux (unfold ts env c, Reductionops.append_stack_list stack Reductionops.empty_stack)
+
+and unfold ts env c =
+  if isConst c && const_is_def ts env (destConst c) then
+    const_value env (destConst c)
+  else
+    c
+
+and is_stuck ts env sigma (hd, args) =
+  let (hd, args) = evar_apprec ts env sigma args hd in
+  let rec is_unnamed (hd, args) = match kind_of_term hd with
+    | (Var _|Construct _|Ind _|Const _|Prod _|Sort _) -> false
+    | (Case _|Fix _|CoFix _|Meta _|Rel _)-> true
+    | Evar _ -> false (* immediate solution without Canon Struct *)
+    | Lambda _ -> assert(args = []); true
+    | LetIn (_, b, _, c) -> is_unnamed (evar_apprec ts env sigma args (subst1 b c))
+    | App _| Cast _ -> assert false
+  in is_unnamed (hd, args)
+
 and reduce_and_unify dbg ts env sigma t t' =
   let t, t' = applist t, applist t' in
   let t2 = Reductionops.whd_betadeltaiota env sigma t' in
@@ -670,7 +724,7 @@ and reduce_and_unify dbg ts env sigma t t' =
     else
       err sigma
 
-and instantiate' dbg ts conv_t env sigma0 (ev, subs as uv) args (h, args' as t) =
+and instantiate' dbg ts conv_t env sigma0 (ev, subs as uv) args (h, args' as t) dir =
   let evi = Evd.find_undefined sigma0 ev in
   let nc = Evd.evar_filtered_context evi in
   let res = 
@@ -683,7 +737,8 @@ and instantiate' dbg ts conv_t env sigma0 (ev, subs as uv) args (h, args' as t) 
     let t'' = Evd.instantiate_evar nc t' subsl in
     let ty' = Retyping.get_type_of env sigma1 t'' in
     let ty = Evd.existential_type sigma1 uv in
-    let p = unify' (dbg+1) ~conv_t:Reduction.CUMUL ts env sigma1 ty' ty &&= fun sigma2 ->
+    let ty, ty' = if dir = DirNormal then ty, ty' else ty', ty in
+    let p = unify' (dbg+1) ~conv_t:Reduction.CUMUL ts env sigma1 ty ty' &&= fun sigma2 ->
       let t' = Reductionops.nf_evar sigma2 t' in
       if Termops.occur_meta t' || Termops.occur_evar ev t' then 
 	err sigma2
@@ -722,11 +777,12 @@ and instantiate' dbg ts conv_t env sigma0 (ev, subs as uv) args (h, args' as t) 
       *)
 (* by invariant, we know that ev is uninstantiated *)
 and instantiate dbg ts conv_t env sigma 
-    (ev, subs as evsubs) args (h, args' as t) =
+    (ev, subs as evsubs) args (h, args' as t) dir =
+  begin
   if is_variable_subs subs then
     if is_variable_args args then
       try 
-	instantiate' dbg ts conv_t env sigma evsubs args t
+	instantiate' dbg ts conv_t env sigma evsubs args t dir
       with CannotPrune -> err sigma
     else 
       if should_try_fo args (h, args') then
@@ -736,6 +792,12 @@ and instantiate dbg ts conv_t env sigma
 	err sigma
   else
     err sigma
+  end ||= fun _ ->
+    match Evarutil.solve_simple_eqn (fun env sigma conv_pb -> unify_evar_conv ~conv_t:conv_pb ts env sigma) env sigma (None, evsubs, applist t) with
+    | (_, false) -> err sigma
+    | (sigma', true) -> Printf.printf "%s" "solve_simple_eqn solved it: ";
+      debug_eq env (mkEvar evsubs) (applist t) dbg;
+      success sigma'
     
 and should_try_fo args (h, args') = false
   (* List.length args' >= List.length args *)
@@ -788,9 +850,9 @@ and conv_record dbg trs env evd t t' =
   unify' (dbg+1) trs env i c1 (applist (c,(List.rev ks))) &&= fun i ->
   ise_list2 i (fun i -> unify' (dbg+1) trs env i) ts ts1
 
-let unify ?(conv_t=Reduction.CONV) = unify' ~conv_t:conv_t 0
+and unify ?(conv_t=Reduction.CONV) = unify' ~conv_t:conv_t 0
 
-let swap (a, b) = (b, a) 
+and swap (a, b) = (b, a) 
 
-let unify_evar_conv ?(conv_t=Reduction.CONV) ts env sigma0 t t' =
+and unify_evar_conv ?(conv_t=Reduction.CONV) ts env sigma0 t t' =
   swap (unify ~conv_t:conv_t ts env sigma0 t t')
