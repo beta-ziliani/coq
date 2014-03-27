@@ -428,6 +428,21 @@ let debug_eq env c1 c2 l =
 type stucked = NotStucked | StuckedLeft | StuckedRight
 type direction = DirNormal | DirOpposite
 
+let evar_apprec ts env sigma stack c =
+  let rec aux s =
+    let (t,stack) = Reductionops.whd_betaiota_deltazeta_for_iota_state ts env sigma s in
+    match kind_of_term t with
+      | Evar (evk,_ as ev) when Evd.is_defined sigma evk ->
+	  aux (Evd.existential_value sigma ev, stack)
+      | _ -> (t, Reductionops.list_of_stack stack)
+  in aux (try_unfolding ts env c, Reductionops.append_stack_list stack Reductionops.empty_stack)
+
+let apprec_nohdbeta ts env evd c =
+  match kind_of_term (fst (Reductionops.whd_stack evd c)) with
+    | (Case _ | Fix _) -> applist (evar_apprec ts env evd [] c)
+    | _ -> c
+
+
 (* pre: c and c' are in whdnf with our definition of whd *)
 let rec unify' ?(conv_t=Reduction.CONV) dbg ts env sigma0 t t' =
   let t = Evarutil.whd_head_evar sigma0 t in
@@ -437,6 +452,8 @@ let rec unify' ?(conv_t=Reduction.CONV) dbg ts env sigma0 t t' =
     && Reductionops.is_trans_fconv conv_t ts env sigma0 t t' 
   then success sigma0
   else
+    let t = apprec_nohdbeta ts env sigma0 t in
+    let t' = apprec_nohdbeta ts env sigma0 t' in
     let (c, l as tapp) = decompose_app t in
     let (c', l' as tapp') = decompose_app t' in
     match (kind_of_term c, kind_of_term c') with
@@ -509,12 +526,14 @@ let rec unify' ?(conv_t=Reduction.CONV) dbg ts env sigma0 t t' =
 	ise_array2 sigma2 (fun i -> unify' (dbg+1) ts env i) cl1 cl2
       ) 
       ||= fun _ ->
-	reduce_and_unify dbg ts env sigma0 tapp tapp'
+	try_step dbg conv_t ts env sigma0 tapp tapp'
 
     | Fix (li1, (_, tys1, bds1 as recdef1)), Fix (li2, (_, tys2, bds2)) 
       when li1 = li2 && l = [] && l' = [] ->
       ise_array2 sigma0 (fun i -> unify' (dbg+1) ts env i) tys1 tys2 &&= fun sigma1 ->
       ise_array2 sigma1 (fun i -> unify' (dbg+1) ts (Environ.push_rec_types recdef1 env) i) bds1 bds2
+      ||= fun _ ->
+	try_step dbg conv_t ts env sigma0 tapp tapp'
 
     | _, _  ->
       (
@@ -672,16 +691,6 @@ and try_step ?(stuck=NotStucked) dbg conv_t ts env sigma0 (c, l as t) (c', l' as
       eta_match ts env sigma0 (name, t1, c1) t
 *)
   | _, _ -> err sigma0 (* reduce_and_unify dbg ts env sigma0 t t' *)
-
-and evar_apprec ts env evd stack c =
-  let sigma = evd in
-  let rec aux s =
-    let (t,stack) = Reductionops.whd_betaiota_deltazeta_for_iota_state ts env sigma s in
-    match kind_of_term t with
-      | Evar (evk,_ as ev) when Evd.is_defined sigma evk ->
-	  aux (Evd.existential_value sigma ev, stack)
-      | _ -> (t, Reductionops.list_of_stack stack)
-  in aux (try_unfolding ts env c, Reductionops.append_stack_list stack Reductionops.empty_stack)
 
 and is_stuck ts env sigma (hd, args) =
   let (hd, args) = evar_apprec ts env sigma args hd in

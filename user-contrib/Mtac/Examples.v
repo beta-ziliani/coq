@@ -2,6 +2,15 @@ Require Import mtac.
 Require Import String.
 Require Import hash.
 
+Require Import ssreflect.
+Ltac test :=
+  case=>a b;
+  apply a.
+
+
+Example trying_tactics : (forall x : True, True) /\ (forall y:True, True).
+split; (try intro y); exact y.
+
 (* Testing unification of CS *)
 Structure astruct := Astruct { mynat : nat }.
 
