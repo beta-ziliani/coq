@@ -458,126 +458,122 @@ let rec unify' ?(conv_t=Reduction.CONV) dbg ts env sigma0 t t' =
   let t = Evarutil.whd_head_evar sigma0 t in
   let t' = Evarutil.whd_head_evar sigma0 t' in
   debug_eq sigma0 env t t' dbg;
-  if Evarutil.is_ground_term sigma0 t && Evarutil.is_ground_term sigma0 t' 
-    && Reductionops.is_trans_fconv conv_t ts env sigma0 t t' 
-  then success sigma0
-  else
-    let t = apprec_nohdbeta ts env sigma0 t in
-    let t' = apprec_nohdbeta ts env sigma0 t' in
-    let (c, l as tapp) = decompose_app t in
-    let (c', l' as tapp') = decompose_app t' in
-    match (kind_of_term c, kind_of_term c') with
-    | Evar _, _ 
-    | _, Evar _ ->
-      one_is_meta dbg ts conv_t env sigma0 tapp tapp'
+  let t = apprec_nohdbeta ts env sigma0 t in
+  let t' = apprec_nohdbeta ts env sigma0 t' in
+  let (c, l as tapp) = decompose_app t in
+  let (c', l' as tapp') = decompose_app t' in
+  match (kind_of_term c, kind_of_term c') with
+  | Evar _, _ 
+  | _, Evar _ ->
+    one_is_meta dbg ts conv_t env sigma0 tapp tapp'
 
-    (* Prop-Same, Set-Same, Type-Same, Type-Same-LE *)
-    | Sort s1, Sort s2 -> 
-      begin
-      try
+  (* Prop-Same, Set-Same, Type-Same, Type-Same-LE *)
+  | Sort s1, Sort s2 -> 
+    begin
+    try
 	let sigma1 = match conv_t with
-        | Reduction.CONV -> Evd.set_eq_sort sigma0 s1 s2 
-        | _ -> Evd.set_leq_sort sigma0 s1 s2
-        in (true, sigma1)
-      with _ -> err sigma0 
-      end
+      | Reduction.CONV -> Evd.set_eq_sort sigma0 s1 s2 
+      | _ -> Evd.set_leq_sort sigma0 s1 s2
+      in (true, sigma1)
+    with _ -> err sigma0 
+    end
 
-    (* Lam-Same *)
-    | Lambda (name, t1, c1), Lambda (_, t2, c2) 
-      when l = [] && l' = [] ->
-      let env' = Environ.push_rel (name, None, t1) env in
-      unify' (dbg+1) ts env sigma0 t1 t2 &&= fun sigma1 ->
-      unify' ~conv_t (dbg+1) ts env' sigma1 c1 c2 &&= fun sigma2 ->
-      success sigma2
+  (* Lam-Same *)
+  | Lambda (name, t1, c1), Lambda (_, t2, c2) 
+    when l = [] && l' = [] ->
+    let env' = Environ.push_rel (name, None, t1) env in
+    unify' (dbg+1) ts env sigma0 t1 t2 &&= fun sigma1 ->
+    unify' ~conv_t (dbg+1) ts env' sigma1 c1 c2 &&= fun sigma2 ->
+    success sigma2
 
-    (* Prod-Same *)
-    | Prod (name, t1, c1), Prod (_, t2, c2) ->
-      unify' (dbg+1) ts env sigma0 t1 t2 &&= fun sigma1 ->
-      unify' ~conv_t (dbg+1) ts (Environ.push_rel (name,None,t1) env) sigma1 c1 c2
+  (* Prod-Same *)
+  | Prod (name, t1, c1), Prod (_, t2, c2) ->
+    unify' (dbg+1) ts env sigma0 t1 t2 &&= fun sigma1 ->
+    unify' ~conv_t (dbg+1) ts (Environ.push_rel (name,None,t1) env) sigma1 c1 c2
 
-    (* Let-Same *)
-    | LetIn (name, trm1, ty1, body1), LetIn (_, trm2, ty2, body2) 
-      when l = [] && l'= [] ->
-      (
-        let env' = Environ.push_rel (name, Some trm1, ty1) env in
-        unify' (dbg+1) ts env sigma0 trm1 trm2 &&= fun sigma1 ->
-        unify' ~conv_t (dbg+1) ts env' sigma1 body1 body2
-      ) ||= (fun _ ->
-          let body1 = subst1 trm1 body1 in
-          let body2 = subst1 trm2 body2 in
-        unify' ~conv_t (dbg+1) ts env sigma0 body1 body2
-      )
+  (* Let-Same *)
+  | LetIn (name, trm1, ty1, body1), LetIn (_, trm2, ty2, body2) 
+    when l = [] && l'= [] ->
+    (
+      let env' = Environ.push_rel (name, Some trm1, ty1) env in
+      unify' (dbg+1) ts env sigma0 trm1 trm2 &&= fun sigma1 ->
+      unify' ~conv_t (dbg+1) ts env' sigma1 body1 body2
+    ) ||= (fun _ ->
+        let body1 = subst1 trm1 body1 in
+        let body2 = subst1 trm2 body2 in
+      unify' ~conv_t (dbg+1) ts env sigma0 body1 body2
+    )
 
-(* ALREADY CONSIDERED IN THE CONV RULE! 
-    (* Rigid-Same *)
-    | Rel n1, Rel n2 when n1 = n2 && l = [] && l' = [] ->
-      success sigma0
-    | Var id1, Var id2 when id1 = id2 && l = [] && l' = [] -> 
-      success sigma0
-    | Const c1, Const c2 when Names.eq_constant c1 c2 && l = [] && l' = [] ->
-      success sigma0
-    | Ind c1, Ind c2 when Names.eq_ind c1 c2 && l = [] && l' = [] ->
-      success sigma0
-    | Construct c1, Construct c2 
-      when Names.eq_constructor c1 c2 && l = [] && l' = []  ->
-      success sigma0
-*)
+  (* Rigid-Same *)
+  | Rel n1, Rel n2 when n1 = n2 && l = [] && l' = [] ->
+    success sigma0
+  | Var id1, Var id2 when id1 = id2 && l = [] && l' = [] -> 
+    success sigma0
+  | Const c1, Const c2 when Names.eq_constant c1 c2 && l = [] && l' = [] ->
+    success sigma0
+  | Ind c1, Ind c2 when Names.eq_ind c1 c2 && l = [] && l' = [] ->
+    success sigma0
+  | Construct c1, Construct c2 
+    when Names.eq_constructor c1 c2 && l = [] && l' = []  ->
+    success sigma0
 
-    | CoFix (i1,(_,tys1,bds1 as recdef1)), CoFix (i2,(_,tys2,bds2))
-      when i1 = i2 && l = [] && l' = [] ->
-      ise_array2 sigma0 (fun i -> unify' (dbg+1) ts env i) tys1 tys2 &&= fun sigma1 ->
-      ise_array2 sigma1 (fun i -> unify' (dbg+1) ts (Environ.push_rec_types recdef1 env) i) bds1 bds2
+  | CoFix (i1,(_,tys1,bds1 as recdef1)), CoFix (i2,(_,tys2,bds2))
+    when i1 = i2 && l = [] && l' = [] ->
+    ise_array2 sigma0 (fun i -> unify' (dbg+1) ts env i) tys1 tys2 &&= fun sigma1 ->
+    ise_array2 sigma1 (fun i -> unify' (dbg+1) ts (Environ.push_rec_types recdef1 env) i) bds1 bds2
+	
+  | Case (_, p1, c1, cl1), Case (_, p2, c2, cl2) 
+    when l = [] && l' = [] ->
+    (
+      unify' (dbg+1) ts env sigma0 p1 p2 &&= fun sigma1 ->
+      unify' (dbg+1) ts env sigma1 c1 c2 &&= fun sigma2 ->
+      ise_array2 sigma2 (fun i -> unify' (dbg+1) ts env i) cl1 cl2
+    ) 
+    ||= fun _ ->
+      try_step dbg conv_t ts env sigma0 tapp tapp'
 
-    | Case (_, p1, c1, cl1), Case (_, p2, c2, cl2) 
-      when l = [] && l' = [] ->
-      (
-	unify' (dbg+1) ts env sigma0 p1 p2 &&= fun sigma1 ->
-	unify' (dbg+1) ts env sigma1 c1 c2 &&= fun sigma2 ->
-	ise_array2 sigma2 (fun i -> unify' (dbg+1) ts env i) cl1 cl2
-      ) 
-      ||= fun _ ->
-	try_step dbg conv_t ts env sigma0 tapp tapp'
+  | Fix (li1, (_, tys1, bds1 as recdef1)), Fix (li2, (_, tys2, bds2)) 
+    when li1 = li2 && l = [] && l' = [] ->
+    ise_array2 sigma0 (fun i -> unify' (dbg+1) ts env i) tys1 tys2 &&= fun sigma1 ->
+    ise_array2 sigma1 (fun i -> unify' (dbg+1) ts (Environ.push_rec_types recdef1 env) i) bds1 bds2
+    ||= fun _ ->
+      try_step dbg conv_t ts env sigma0 tapp tapp'
 
-    | Fix (li1, (_, tys1, bds1 as recdef1)), Fix (li2, (_, tys2, bds2)) 
-      when li1 = li2 && l = [] && l' = [] ->
-      ise_array2 sigma0 (fun i -> unify' (dbg+1) ts env i) tys1 tys2 &&= fun sigma1 ->
-      ise_array2 sigma1 (fun i -> unify' (dbg+1) ts (Environ.push_rec_types recdef1 env) i) bds1 bds2
-      ||= fun _ ->
-	try_step dbg conv_t ts env sigma0 tapp tapp'
-
-    | _, _  ->
-      (
-	if (isConst c || isConst c') && not (eq_constr c c') then
-         if is_lift c && List.length l = 3 then
-           run_and_unify dbg ts env sigma0 l (applist tapp')
-         else if is_lift c' && List.length l' = 3 then
-           run_and_unify dbg ts env sigma0 l' (applist tapp)
-         else
-           err sigma0
-       else
-         err sigma0
-      ) ||= fun _ ->
-      (
-       if (isConst c || isConst c') && not (eq_constr c c') then
-	  try conv_record dbg ts env sigma0 tapp tapp'
-	  with Not_found ->
-	    try conv_record dbg ts env sigma0 tapp' tapp
-	    with Not_found -> err sigma0
-	else
-	  err sigma0
-      ) ||= fun _ ->
-      (
-	let n = List.length l in
-	let m = List.length l' in
-	if n = m && n > 0 then
-	  unify' ~conv_t (dbg+1) ts env sigma0 c c' &&= fun sigma1 ->
-          ise_list2 sigma1 (fun i -> unify' (dbg+1) ts env i) l l'
-	else
-	  err sigma0
-      ) ||= fun _ ->
-      (
-	try_step dbg conv_t ts env sigma0 tapp tapp'
-      )
+  | _, _  ->
+    (
+      if (isConst c || isConst c') && not (eq_constr c c') then
+	begin
+          if is_lift c && List.length l = 3 then
+            run_and_unify dbg ts env sigma0 l (applist tapp')
+          else if is_lift c' && List.length l' = 3 then
+            run_and_unify dbg ts env sigma0 l' (applist tapp)
+          else
+            err sigma0
+	end
+      else
+        err sigma0
+    ) ||= fun _ ->
+    (
+      if (isConst c || isConst c') && not (eq_constr c c') then
+	try conv_record dbg ts env sigma0 tapp tapp'
+	with Not_found ->
+	  try conv_record dbg ts env sigma0 tapp' tapp
+	  with Not_found -> err sigma0
+      else
+	err sigma0
+    ) ||= fun _ ->
+    (
+      let n = List.length l in
+      let m = List.length l' in
+      if n = m && n > 0 then
+	unify' ~conv_t (dbg+1) ts env sigma0 c c' &&= fun sigma1 ->
+        ise_list2 sigma1 (fun i -> unify' (dbg+1) ts env i) l l'
+      else
+	err sigma0
+    ) ||= fun _ ->
+    (
+      try_step dbg conv_t ts env sigma0 tapp tapp'
+    )
 
 and run_and_unify dbg ts env sigma0 args ty =
   let a, f, v = List.nth args 0, List.nth args 1, List.nth args 2 in
