@@ -447,19 +447,14 @@ let evar_apprec ts env sigma stack c =
       | _ -> (t, Reductionops.list_of_stack stack)
   in aux (try_unfolding ts env c, Reductionops.append_stack_list stack Reductionops.empty_stack)
 
-let apprec_nohdbeta ts env evd c =
-  match kind_of_term (fst (Reductionops.whd_stack evd c)) with
-    | (Case _ | Fix _) -> applist (evar_apprec ts env evd [] c)
-    | _ -> c
-
 
 (* pre: c and c' are in whdnf with our definition of whd *)
 let rec unify' ?(conv_t=Reduction.CONV) dbg ts env sigma0 t t' =
   let t = Evarutil.whd_head_evar sigma0 t in
   let t' = Evarutil.whd_head_evar sigma0 t' in
   debug_eq sigma0 env t t' dbg;
-  let t = apprec_nohdbeta ts env sigma0 t in
-  let t' = apprec_nohdbeta ts env sigma0 t' in
+(*  let t = apprec_nohdbeta ts env sigma0 t in
+  let t' = apprec_nohdbeta ts env sigma0 t' in *)
   let (c, l as tapp) = decompose_app t in
   let (c', l' as tapp') = decompose_app t' in
   match (kind_of_term c, kind_of_term c') with
@@ -491,16 +486,17 @@ let rec unify' ?(conv_t=Reduction.CONV) dbg ts env sigma0 t t' =
     unify' (dbg+1) ts env sigma0 t1 t2 &&= fun sigma1 ->
     unify' ~conv_t (dbg+1) ts (Environ.push_rel (name,None,t1) env) sigma1 c1 c2
 
-  (* Let-Same *)
   | LetIn (name, trm1, ty1, body1), LetIn (_, trm2, ty2, body2) 
     when l = [] && l'= [] ->
     (
+      (* Let-Same *)
       let env' = Environ.push_rel (name, Some trm1, ty1) env in
       unify' (dbg+1) ts env sigma0 trm1 trm2 &&= fun sigma1 ->
       unify' ~conv_t (dbg+1) ts env' sigma1 body1 body2
     ) ||= (fun _ ->
-        let body1 = subst1 trm1 body1 in
-        let body2 = subst1 trm2 body2 in
+      (* Let-Zeta *)
+      let body1 = subst1 trm1 body1 in
+      let body2 = subst1 trm2 body2 in
       unify' ~conv_t (dbg+1) ts env sigma0 body1 body2
     )
 
@@ -649,7 +645,7 @@ and try_step ?(stuck=NotStucked) dbg conv_t ts env sigma0 (c, l as t) (c', l' as
 
   | _, Case _ | _, Fix _ when stuck <> StuckedRight ->
     let t'' = applist t' in
-    let t2 = Reductionops.whd_betadeltaiota env sigma0 t'' in
+    let t2 = applist (evar_apprec ts env sigma0 [] t'') in
     if t'' <> t2 then
       (* WhdR *)
       unify' ~conv_t (dbg+1) ts env sigma0 (applist t) t2
@@ -659,7 +655,7 @@ and try_step ?(stuck=NotStucked) dbg conv_t ts env sigma0 (c, l as t) (c', l' as
 
   | Case _, _ | Fix _, _ when stuck <> StuckedLeft ->
     let t'' = applist t in
-    let t2 = Reductionops.whd_betadeltaiota env sigma0 t'' in
+    let t2 = applist (evar_apprec ts env sigma0 [] t'') in
     if t'' <> t2 then
       (* WhdL *)
       unify' ~conv_t (dbg+1) ts env sigma0 t2 (applist t')
