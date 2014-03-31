@@ -29,6 +29,17 @@ let _ = Goptions.declare_bool_option {
   Goptions.optwrite = set_debug 
 }
 
+let evarconv_for_cs = ref false
+let get_evarconv_for_cs = fun _ -> !evarconv_for_cs
+
+let _ = Goptions.declare_bool_option {
+  Goptions.optsync  = false;
+  Goptions.optdepr  = false;
+  Goptions.optname  = "Use Evarconv for CS";
+  Goptions.optkey   = ["Use";"Evarconv";"For";"CS"];
+  Goptions.optread  = get_evarconv_for_cs;
+  Goptions.optwrite = fun b -> evarconv_for_cs := b 
+}
 
 
 let (>>=) opt f = 
@@ -412,21 +423,20 @@ let debug_str s l =
   else
     ()
 
-let debug_eq env c1 c2 l = 
+let debug_eq sigma env c1 c2 l = 
   if !debug then 
     begin
       print_bar l;
       pad l;
-      Pp.msg (Termops.print_constr c1);
+      Pp.msg (Termops.print_constr (Evarutil.nf_evar sigma c1));
       Printf.printf "%s" " =?= ";
-      Pp.msg (Termops.print_constr c2);
+      Pp.msg (Termops.print_constr (Evarutil.nf_evar sigma c2));
       Printf.printf "\n" 
     end
   else
     ()
   
 type stucked = NotStucked | StuckedLeft | StuckedRight
-type direction = DirNormal | DirOpposite
 
 let evar_apprec ts env sigma stack c =
   let rec aux s =
@@ -447,7 +457,7 @@ let apprec_nohdbeta ts env evd c =
 let rec unify' ?(conv_t=Reduction.CONV) dbg ts env sigma0 t t' =
   let t = Evarutil.whd_head_evar sigma0 t in
   let t' = Evarutil.whd_head_evar sigma0 t' in
-  debug_eq env t t' dbg;
+  debug_eq sigma0 env t t' dbg;
   if Evarutil.is_ground_term sigma0 t && Evarutil.is_ground_term sigma0 t' 
     && Reductionops.is_trans_fconv conv_t ts env sigma0 t t' 
   then success sigma0
@@ -586,11 +596,11 @@ and one_is_meta dbg ts conv_t env sigma0 (c, l as t) (c', l' as t') =
     else
       (* Meta-Meta *)
       if k1 > k2 then
-	instantiate dbg ts conv_t env sigma0 e1 l t' DirNormal ||= fun _ ->
-	instantiate dbg ts conv_t env sigma0 e2 l' t DirOpposite
+	instantiate dbg ts conv_t env sigma0 e1 l t' ||= fun _ ->
+	instantiate dbg ts conv_t env sigma0 e2 l' t
       else
-	instantiate dbg ts conv_t env sigma0 e2 l' t DirOpposite ||= fun _ ->
-	instantiate dbg ts conv_t env sigma0 e1 l t' DirNormal
+	instantiate dbg ts conv_t env sigma0 e2 l' t ||= fun _ ->
+	instantiate dbg ts conv_t env sigma0 e1 l t'
   else
     if isEvar c then
       if is_lift c' && List.length l' = 3 then
@@ -598,14 +608,14 @@ and one_is_meta dbg ts conv_t env sigma0 (c, l as t) (c', l' as t') =
       else
 	(* Meta-InstL *)
 	let e1 = destEvar c in
-	instantiate dbg ts conv_t env sigma0 e1 l t' DirNormal
+	instantiate dbg ts conv_t env sigma0 e1 l t'
     else
       if is_lift c && List.length l = 3 then
         run_and_unify dbg ts env sigma0 l (applist t')
       else
         (* Meta-InstR *)
 	let e2 = destEvar c' in
-	instantiate dbg ts conv_t env sigma0 e2 l' t DirOpposite
+	instantiate dbg ts conv_t env sigma0 e2 l' t
 
 and try_step ?(stuck=NotStucked) dbg conv_t ts env sigma0 (c, l as t) (c', l' as t') =
   match (kind_of_term c, kind_of_term c') with
@@ -717,7 +727,7 @@ and reduce_and_unify dbg ts env sigma t t' =
     else
       err sigma
 
-and instantiate' dbg ts conv_t env sigma0 (ev, subs as uv) args (h, args' as t) dir =
+and instantiate' dbg ts conv_t env sigma0 (ev, subs as uv) args (h, args' as t) =
   let evi = Evd.find_undefined sigma0 ev in
   let nc = Evd.evar_filtered_context evi in
   let res = 
@@ -730,7 +740,6 @@ and instantiate' dbg ts conv_t env sigma0 (ev, subs as uv) args (h, args' as t) 
     let t'' = Evd.instantiate_evar nc t' subsl in
     let ty' = Retyping.get_type_of env sigma1 t'' in
     let ty = Evd.existential_type sigma1 uv in
-    let ty, ty' = if dir = DirNormal then ty, ty' else ty', ty in
     let p = unify' (dbg+1) ~conv_t:Reduction.CUMUL ts env sigma1 ty ty' &&= fun sigma2 ->
       let t' = Reductionops.nf_evar sigma2 t' in
       if Termops.occur_meta t' || Termops.occur_evar ev t' then 
@@ -770,12 +779,12 @@ and instantiate' dbg ts conv_t env sigma0 (ev, subs as uv) args (h, args' as t) 
       *)
 (* by invariant, we know that ev is uninstantiated *)
 and instantiate dbg ts conv_t env sigma 
-    (ev, subs as evsubs) args (h, args' as t) dir =
+    (ev, subs as evsubs) args (h, args' as t) =
   begin
   if is_variable_subs subs then
     if is_variable_args args then
       try 
-	instantiate' dbg ts conv_t env sigma evsubs args t dir
+	instantiate' dbg ts conv_t env sigma evsubs args t
       with CannotPrune -> err sigma
     else 
       if should_try_fo args (h, args') then
@@ -786,10 +795,10 @@ and instantiate dbg ts conv_t env sigma
   else
     err sigma
   end ||= fun _ ->
-    match Evarutil.solve_simple_eqn (fun env sigma conv_pb -> unify_evar_conv ~conv_t:conv_pb ts env sigma) env sigma (None, evsubs, applist t) with
+    match Evarutil.solve_simple_eqn (unify_evar_conv ts) env sigma (None, evsubs, applist t) with
     | (_, false) -> err sigma
     | (sigma', true) -> Printf.printf "%s" "solve_simple_eqn solved it: ";
-      debug_eq env (mkEvar evsubs) (applist t) dbg;
+      debug_eq sigma env (mkEvar evsubs) (applist t) dbg;
       success sigma'
     
 and should_try_fo args (h, args') = false
@@ -847,5 +856,5 @@ and unify ?(conv_t=Reduction.CONV) = unify' ~conv_t:conv_t 0
 
 and swap (a, b) = (b, a) 
 
-and unify_evar_conv ?(conv_t=Reduction.CONV) ts env sigma0 t t' =
+and unify_evar_conv ts env sigma0 conv_t t t' =
   swap (unify ~conv_t:conv_t ts env sigma0 t t')
