@@ -104,3 +104,8 @@ val one_is_meta : int -> Names.transparent_state ->
 val is_variable_subs : Term.types array -> bool
 
 val is_variable_args : Term.types list -> bool
+
+val unify' : ?conv_t:Evd.conv_pb -> int ->
+  Names.transparent_state ->
+  Environ.env ->
+  Evd.evar_map -> (Term.constr * Term.constr list) -> (Term.constr * Term.constr list) -> bool * Evd.evar_map
