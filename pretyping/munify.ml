@@ -674,10 +674,10 @@ and try_step ?(stuck=NotStucked) dbg conv_t ts env sigma0 (c, l as t) (c', l' as
 	try_step ~stuck:StuckedLeft dbg conv_t ts env sigma0 t t'
       else
 	transp_matchL ts env sigma0 c l (applist t') (unify' ~conv_t (dbg+1))
-  | Const _, _ when has_definition ts env c && stuck = StuckedRight ->
-      transp_matchL ts env sigma0 c l (applist t') (unify' ~conv_t (dbg+1))
   | _, Const _ when has_definition ts env c' && stuck = StuckedLeft ->
       transp_matchR ts env sigma0 c' l' (applist t) (unify' ~conv_t (dbg+1)) 
+  | Const _, _ when has_definition ts env c && stuck = StuckedRight ->
+      transp_matchL ts env sigma0 c l (applist t') (unify' ~conv_t (dbg+1))
 
 (*      
   (* Lam-EtaL *)
