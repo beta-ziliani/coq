@@ -670,6 +670,11 @@ and try_step ?(stuck=NotStucked) dbg conv_t ts env sigma0 (c, l as t) (c', l' as
   | Const _, _ when has_definition ts env c && stuck = StuckedRight ->
     unify' ~conv_t (dbg+1) ts env sigma0 (get_def_app_stack env t) t'
 
+  | _, Const _ when has_definition ts env c' ->
+    unify' ~conv_t (dbg+1) ts env sigma0 t (get_def_app_stack env t')
+  | Const _, _ when has_definition ts env c ->
+    unify' ~conv_t (dbg+1) ts env sigma0 (get_def_app_stack env t) t'
+
 (*      
   (* Lam-EtaL *)
   | Lambda (name, t1, c1), _ when l = [] ->
