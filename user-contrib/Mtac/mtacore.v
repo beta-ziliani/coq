@@ -195,24 +195,24 @@ Notation "'_' =c> b " := (tele (fun x=> base x (fun _=>b%core) UniRed))
 Delimit Scope mtac_patt_scope with mtac_patt.
 
 Notation "'mmatch' t 'with' | p1 | .. | pn 'end'" := 
-  (tmatch (fun _=>_) t (cons p1%mtac_patt (.. (cons pn%mtac_patt nil) ..))) 
+  (tmatch (fun _=>_) t ((fun l : list (tpatt _ (fun _=>_) _)=>l) (cons p1%mtac_patt (.. (cons pn%mtac_patt nil) ..))))
     (at level 90, p1 at level 210, pn at level 210, only parsing).
 Notation "'mmatch' t 'return' 'M' p 'with' | p1 | .. | pn 'end'" := 
-  (tmatch (fun _=>p) t (cons p1%mtac_patt (.. (cons pn%mtac_patt nil) ..))) 
+  (tmatch (fun _=>p) t ((fun l : list (tpatt _ (fun _=>p) _)=>l) (cons p1%mtac_patt (.. (cons pn%mtac_patt nil) ..))))
     (at level 90, p1 at level 210, pn at level 210, only parsing).
 Notation "'mmatch' t 'as' x 'return' 'M' p 'with' | p1 | .. | pn 'end'" := 
-  (tmatch (fun x=>p) t (cons p1%mtac_patt (.. (cons pn%mtac_patt nil) ..))) 
+  (tmatch (fun x=>p) t ((fun l : list (tpatt _ (fun x=>p) _)=>l) (cons p1%mtac_patt (.. (cons pn%mtac_patt nil) ..))))
     (at level 90, p1 at level 210, pn at level 210, format
   "'[v' 'mmatch'  t  'as'  x  'return'  'M'  p  'with' '/' '|'  p1 '/' '|'  .. '/' '|'  pn '/' 'end' ']'").
 
 Notation "'mmatch' t 'with' p1 | .. | pn 'end'" := 
-  (tmatch (fun _=>_) t (cons p1%mtac_patt (.. (cons pn%mtac_patt nil) ..))) 
+  (tmatch (fun _=>_) t  ((fun l : list (tpatt _ (fun _=>_) _)=>l)(cons p1%mtac_patt (.. (cons pn%mtac_patt nil) ..)))) 
     (at level 90, p1 at level 210, pn at level 210, only parsing).
 Notation "'mmatch' t 'return' 'M' p 'with' p1 | .. | pn 'end'" := 
-  (tmatch (fun _=>p) t (cons p1%mtac_patt (.. (cons pn%mtac_patt nil) ..))) 
+  (tmatch (fun _=>p) t ((fun l : list (tpatt _ (fun _=>p) _)=>l) (cons p1%mtac_patt (.. (cons pn%mtac_patt nil) ..))))
     (at level 90, p1 at level 210, pn at level 210, only parsing).
 Notation "'mmatch' t 'as' x 'return' 'M' p 'with' p1 | .. | pn 'end'" := 
-  (tmatch (fun x=>p) t (cons p1%mtac_patt (.. (cons pn%mtac_patt nil) ..))) 
+  (tmatch (fun x=>p) t ((fun l : list (tpatt _ (fun x=>p) _)=>l) (cons p1%mtac_patt (.. (cons pn%mtac_patt nil) ..))))
     (at level 90, p1 at level 210, pn at level 210, only parsing).
 
 
@@ -245,29 +245,29 @@ Definition mk_rec (Ty : Prop) (b : Ty) : M dynamic :=
   end.
 
 
-Notation "'mfix1' f ( x : A ) := b" := (tfix1' _ _ (fun f (x : A)=>b))
+Notation "'mfix1' f ( x : A ) : 'M' T := b" := (tfix1 (fun x=>T) (fun f (x : A)=>b))
   (at level 85, f at level 0, x at next level, format
-  "'[v  ' 'mfix1'  f  '(' x  ':'  A ')'  ':=' '/  ' b ']'").
+  "'[v  ' 'mfix1'  f  '(' x  ':'  A ')'  ':'  'M'  T  ':=' '/  ' b ']'").
 
-Notation "'mfix2' f ( x : A ) ( y : B ) := b" := 
-  (tfix2' _ _ (fun f (x : A) (y : B)=>b))
+Notation "'mfix2' f ( x : A ) ( y : B ) : 'M' T := b" := 
+  (tfix2 (fun (x : A) (y : B)=>T) (fun f (x : A) (y : B)=>b))
   (at level 85, f at level 0, x at next level, y at next level, format
-  "'[v  ' 'mfix2'  f  '(' x  ':'  A ')'  '(' y  ':'  B ')'  ':=' '/  ' b ']'").
+  "'[v  ' 'mfix2'  f  '(' x  ':'  A ')'  '(' y  ':'  B ')'  ':'  'M'   T  ':=' '/  ' b ']'").
 
-Notation "'mfix3' f ( x : A ) ( y : B ) ( z : C ) := b" := 
-  (tfix3' _ _ (fun f (x : A) (y : B) (z : C)=>b))
+Notation "'mfix3' f ( x : A ) ( y : B ) ( z : C ) : 'M' T := b" := 
+  (tfix3 (fun (x : A) (y : B) (z : C)=>T) (fun f (x : A) (y : B) (z : C)=>b))
   (at level 85, f at level 0, x at next level, y at next level, z at next level, format
-  "'[v  ' 'mfix3'  f  '(' x  ':'  A ')'  '(' y  ':'  B ')'  '(' z  ':'  C ')'  ':=' '/  ' b ']'").
+  "'[v  ' 'mfix3'  f  '(' x  ':'  A ')'  '(' y  ':'  B ')'  '(' z  ':'  C ')'  ':'  'M'  T  ':=' '/  ' b ']'").
 
-Notation "'mfix4' f ( x1 : A1 ) ( x2 : A2 ) ( x3 : A3 ) ( x4 : A4 ) := b" := 
-  (tfix4' _ _ (fun f (x1 : A1) (x2 : A2) (x3 : A3) (x4 : A4) =>b))
+Notation "'mfix4' f ( x1 : A1 ) ( x2 : A2 ) ( x3 : A3 ) ( x4 : A4 ) : 'M' T := b" := 
+  (tfix4 (fun (x1 : A1) (x2 : A2) (x3 : A3) (x4 : A4)=>T) (fun f (x1 : A1) (x2 : A2) (x3 : A3) (x4 : A4) =>b))
   (at level 85, f at level 0, x1 at next level, x2 at next level, x3 at next level, x4 at next level, format
-  "'[v  ' 'mfix4'  f  '(' x1  ':'  A1 ')'  '(' x2  ':'  A2 ')'  '(' x3  ':'  A3 ')'  '(' x4  ':'  A4 ')'  ':=' '/  ' b ']'").
+  "'[v  ' 'mfix4'  f  '(' x1  ':'  A1 ')'  '(' x2  ':'  A2 ')'  '(' x3  ':'  A3 ')'  '(' x4  ':'  A4 ')'  ':'  'M'  T  ':=' '/  ' b ']'").
 
-Notation "'mfix5' f ( x1 : A1 ) ( x2 : A2 ) ( x3 : A3 ) ( x4 : A4 ) ( x5 : A5 ) := b" := 
-  (tfix4' _ _ (fun f (x1 : A1) (x2 : A2) (x3 : A3) (x4 : A4) (x5 : A5) =>b))
+Notation "'mfix5' f ( x1 : A1 ) ( x2 : A2 ) ( x3 : A3 ) ( x4 : A4 ) ( x5 : A5 ) : 'M' T := b" := 
+  (tfix5 (fun (x1 : A1) (x2 : A2) (x3 : A3) (x4 : A4) (x5 : A5)=>T) (fun f (x1 : A1) (x2 : A2) (x3 : A3) (x4 : A4) (x5 : A5) =>b))
   (at level 85, f at level 0, x1 at next level, x2 at next level, x3 at next level, x4 at next level, x5 at next level, format
-  "'[v  ' 'mfix5'  f  '(' x1  ':'  A1 ')'  '(' x2  ':'  A2 ')'  '(' x3  ':'  A3 ')'  '(' x4  ':'  A4 ')'  '(' x5  ':'  A5 ')'  ':=' '/  ' b ']'").
+  "'[v  ' 'mfix5'  f  '(' x1  ':'  A1 ')'  '(' x2  ':'  A2 ')'  '(' x3  ':'  A3 ')'  '(' x4  ':'  A4 ')'  '(' x5  ':'  A5 ')'  ':'  'M'  T  ':=' '/  ' b ']'").
 
 
 Notation "'mfix' f x .. y := b" := (

@@ -1,7 +1,7 @@
 Require Import mtac.
 Require Import String.
 Require Import hash.
-
+(*
 Require Import ssreflect.
 Ltac test :=
   case=>a b;
@@ -91,7 +91,7 @@ Definition test2 := run (
 
 Print test2.
 
-
+*)
 Set Implicit Arguments.
 
 
@@ -115,6 +115,7 @@ Definition remove {A} (x : A) :=
 
 Definition fv :=
   mfix fv (d : dyn) : M (list dyn) :=
+    print_term d;;
     mmatch d with
     | [B C (f : B -> C)] Dyn (fun y:B => f y) =m>
       nu (y : B),
@@ -179,21 +180,21 @@ Module WithList.
 
   Program
   Definition lookup (p : Prop)  := 
-    mfix f (s : list dyn) : M p :=
+    mfix1 f (s : list dyn) : M _ :=
       mmatch s return M p with
       | [x s'] (@Dyn p x) :: s' => ret x
       | [d s'] d :: s' => f s'
       | _ => raise ProofNotFound
       end.
-  
+
   Program
   Definition tauto' :=
-    mfix f (c : list dyn) (p : Prop) : M p :=
+    mfix2 f (c : list dyn) (p : Prop) : M p :=
       mmatch p as p' return M p' with
-      | True => ret I 
+      | True => ret I
       | [p1 p2] p1 /\ p2 =>
-           r1 <- f c p1 ;
-           r2 <- f c p2 ;
+           r1 <- f c p1;
+           r2 <- f c p2;
            ret (conj r1 r2)
       | [p1 p2]  p1 \/ p2 =>
            mtry 
@@ -219,7 +220,7 @@ Module WithList.
              raise ProofNotFound
            else
              ret (ex_intro q X r)
-      | [p':Prop] p' => lookup p' c
+      | [p':Prop] p' => lookup p' c 
       end.
   
   Definition tauto P := 
@@ -239,7 +240,8 @@ Module WithHash.
 
   Program
   Definition tauto' (c : ctx) :=
-    mfix f (p : Prop) : M p :=
+    mfix1 f (p : Prop) : M _ :=
+    let f := f : forall p:Prop, M p in
     mmatch p as p' return M p' with
     | True => ret I 
     | [p1 p2] p1 /\ p2 =>
@@ -306,9 +308,14 @@ Inductive Subst : Ctx -> Type :=
     fun C A B f => nu x, 
       ret (cp (fun s=>(cProof (f x) s))).
 
-  Program
   Definition lookup (p : Prop)  := 
-    mfix f (s : list dyn) : M p :=
+    mfix1 f (s : list dyn) : M _ :=
+      tmatch (fun _=>p) s (@id (list (tpatt _ (fun _ => p) _))
+      (@tele _ _ _ _ (fun x=>tele (fun s'=> @base _ _ _ ((@Dyn p x) :: s') (fun _ =>ret x) UniMuni)) :: nil)).
+      | [d s'] d :: s' => f s'
+      | _ => raise ProofNotFound
+      end.
+    
       mmatch s return M p with
       | [x s'] (@Dyn p x) :: s' => ret x
       | [d s'] d :: s' => f s'

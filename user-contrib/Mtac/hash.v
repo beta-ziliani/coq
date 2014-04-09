@@ -10,9 +10,10 @@ Module ListMtactics.
     exact exception.
   Qed.
 
+  Program
   Definition inlist {A} (x : A) :=
-    mfix f (s : list A) :=
-      mmatch s with
+    mfix1 f (s : list A) : M _ :=
+      mmatch s as s' return M (In x s') with
       | [l r] l ++ r =m>
         mtry 
           il <- f l;
