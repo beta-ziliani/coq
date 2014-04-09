@@ -190,6 +190,7 @@ Module WithList.
   Program
   Definition tauto' :=
     mfix2 f (c : list dyn) (p : Prop) : M p :=
+      print_term p;;
       mmatch p as p' return M p' with
       | True => ret I
       | [p1 p2] p1 /\ p2 =>
@@ -228,6 +229,13 @@ Module WithList.
 
 End WithList.
 
+Example ex_first_order_0 : 
+  forall x (p q : nat -> Prop), exists y, p x -> q x -> p y /\ q y.
+Proof. 
+Set Printing Existential Instances.
+  refine (run (WithList.tauto _)).
+Qed.
+
 
 Require Import hash.
 Module WithHash.
@@ -240,7 +248,7 @@ Module WithHash.
 
   Program
   Definition tauto' (c : ctx) :=
-    mfix1 f (p : Prop) : M _ :=
+    mfix f (p : Prop) : M _ :=
     let f := f : forall p:Prop, M p in
     mmatch p as p' return M p' with
     | True => ret I 
@@ -259,7 +267,7 @@ Module WithHash.
     | [p1 p2 : Prop] p1 -> p2 =>
          nu (x:p1),
            HashTbl.add c p1 x;;
-           mtry r <- f p2; abs x r
+           mtry r <- f p2; HashTbl.remove c p1;; abs x r
            with [e] e => HashTbl.remove c p1;; raise e end
     | [A (q:A -> Prop)] (forall x:A, q x) =>
          nu (x:A),
@@ -267,7 +275,7 @@ Module WithHash.
            abs x r
     | [x:Prop] x => 
       mtry HashTbl.find c x
-      with _ => raise ProofNotFound
+      with HashTbl.NotFound => raise ProofNotFound
       end
     end.
 
@@ -284,92 +292,12 @@ Proof.
   (* Should say "WithHash.ProofNotFound" *)
 Abort.
 
+Example should_fail : forall (P Q : Prop), (P -> P) /\ (P -> Q).
+Proof.
+  Fail refine (run (WithHash.tauto _)).
+  (* Should say "WithHash.ProofNotFound" *)
+Abort.
 
-Module WithCT.
-
-  Definition dyn := { x : Prop | x}.
-  Definition Dyn := @exist Prop (fun p=>p).
-
-  Definition ProofNotFound : Exception.
-    exact exception.
-  Qed.
-
-Definition Ctx := list Type.
-Definition CtxSet := list Set.
-Coercion CtxCoerce := map (fun (s: Set) => (s:Type)) : CtxSet -> Ctx.
-
-Inductive Subst : Ctx -> Type :=
-| snil : Subst nil
-| scons A C : A -> Subst C -> Subst (A::C).
-
-  Record CT C (P: Type) : Type := cp { cProof : Subst C -> P }.
-
-  Definition nu' : forall C A B, (A -> CT (A :: C) B) -> M (CT (A :: C) B) := 
-    fun C A B f => nu x, 
-      ret (cp (fun s=>(cProof (f x) s))).
-
-  Definition lookup (p : Prop)  := 
-    mfix1 f (s : list dyn) : M _ :=
-      tmatch (fun _=>p) s (@id (list (tpatt _ (fun _ => p) _))
-      (@tele _ _ _ _ (fun x=>tele (fun s'=> @base _ _ _ ((@Dyn p x) :: s') (fun _ =>ret x) UniMuni)) :: nil)).
-      | [d s'] d :: s' => f s'
-      | _ => raise ProofNotFound
-      end.
-    
-      mmatch s return M p with
-      | [x s'] (@Dyn p x) :: s' => ret x
-      | [d s'] d :: s' => f s'
-      | _ => raise ProofNotFound
-      end.
-  
-  Program
-  Definition tauto' :=
-    mfix f (c : list dyn) (p : Prop) : M p :=
-      mmatch p as p' return M p' with
-      | True => ret I 
-      | [p1 p2] p1 /\ p2 =>
-           r1 <- f c p1 ;
-           r2 <- f c p2 ;
-           ret (conj r1 r2)
-      | [p1 p2]  p1 \/ p2 =>
-           mtry 
-             r1 <- f c p1 ;
-             ret (or_introl r1)
-           with _ =>
-             r2 <- f c p2 ;
-             ret (or_intror r2)
-           end
-      | [p1 p2 : Prop] p1 -> p2 =>
-           nu (x:p1),
-             r <- f (@Dyn p1 x :: c) p2;
-             abs x r
-      | [A (q:A -> Prop)] (forall x:A, q x) =>
-           nu (x:A),
-             r <- f c (q x);
-             abs x r
-      | [A (q:A -> Prop)] (exists x:A, q x) =>
-           X <- evar A;
-           r <- f c (q X);
-           b <- is_evar X;
-           if b then 
-             raise ProofNotFound
-           else
-             ret (ex_intro q X r)
-      | [p':Prop] p' => lookup p' c
-      end.
-  
-  Definition tauto P := 
-    tauto' nil P.
-
-End WithCT.
-
-
-
-Example ex_first_order_0 : 
-  forall x (p q : nat -> Prop), exists y, p x -> q x -> p y /\ q y.
-Proof. 
-  refine (run (WithList.tauto _)).
-Qed.
 
 Example ex_first_order_2 (p q r : Prop) : 
   q -> p -> q.

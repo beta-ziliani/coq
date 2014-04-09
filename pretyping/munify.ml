@@ -771,7 +771,7 @@ and instantiate dbg ts conv_t env sigma
       success sigma'
     
 and should_try_fo args (h, args') =
-  List.length args' >= List.length args
+  List.length args > 0 && List.length args' >= List.length args
 
 and meta_fo dbg ts env sigma (evsubs, args) (h, args') =
   let arr = Array.of_list args in

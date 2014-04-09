@@ -173,6 +173,8 @@ Notation "[ x .. y ] ps" := (tele (fun x=> .. (tele (fun y=>ps)).. ))
   (at level 202, x binder, y binder, ps at next level) : mtac_patt_scope.
 Notation "p => b" := (base p%core (fun _=>b%core) UniMuni) 
   (no associativity, at level 201) : mtac_patt_scope. 
+Notation "p => b 'return' T" := (@base _ T _ p%core (fun _=>b%core) UniMuni) 
+  (no associativity, at level 201) : mtac_patt_scope. 
 Notation "p => [ H ] b" := (base p%core (fun H=>b%core) UniMuni) 
   (no associativity, at level 201, H at next level) : mtac_patt_scope. 
 Notation "p '=s>' b" := (base p%core (fun _=>b%core) UniSimpl) 
@@ -228,18 +230,18 @@ Qed.
 
 Definition mk_rec (Ty : Prop) (b : Ty) : M dynamic :=
   mmatch Ty as Ty' return M _ with
-  | [A B] (forall x:A, M (B x)) -> forall x:A, M (B x) => [H]
+  | [A B] (forall x:A, M (B x)) -> forall x:A, M (B x) =c> [H]
     retS (Build_dynamic _ (tfix1 B (eq_ind _ id b _ H)))
-  | [A B C] (forall (x:A) (y : B x), M (C x y)) -> forall (x:A) (y : B x), M (C x y) =>[H] 
+  | [A B C] (forall (x:A) (y : B x), M (C x y)) -> forall (x:A) (y : B x), M (C x y) =c>[H] 
     retS (Build_dynamic _ (tfix2 C (eq_ind _ id b _ H)))
   | [A1 A2 A3 B] (forall (x1:A1) (x2:A2 x1) (x3:A3 x1 x2), M (B x1 x2 x3)) 
-    -> forall (x1:A1) (x2:A2 x1) (x3:A3 x1 x2), M (B x1 x2 x3) => [H]
+    -> forall (x1:A1) (x2:A2 x1) (x3:A3 x1 x2), M (B x1 x2 x3) =c> [H]
     retS (Build_dynamic _ (tfix3 B (eq_ind _ id b _ H)))
   | [A1 A2 A3 A4 B] (forall (x1:A1) (x2:A2 x1) (x3:A3 x1 x2) (x4:A4 x1 x2 x3), M (B x1 x2 x3 x4)) 
-    -> forall (x1:A1) (x2:A2 x1) (x3:A3 x1 x2) (x4:A4 x1 x2 x3), M (B x1 x2 x3 x4) => [H]
+    -> forall (x1:A1) (x2:A2 x1) (x3:A3 x1 x2) (x4:A4 x1 x2 x3), M (B x1 x2 x3 x4) =c> [H]
     retS (Build_dynamic _ (tfix4 B (eq_ind _ id b _ H)))
   | [A1 A2 A3 A4 A5 B] (forall (x1:A1) (x2:A2 x1) (x3:A3 x1 x2) (x4:A4 x1 x2 x3) (x5:A5 x1 x2 x3 x4), M (B x1 x2 x3 x4 x5)) 
-    -> forall (x1:A1) (x2:A2 x1) (x3:A3 x1 x2) (x4:A4 x1 x2 x3) (x5:A5 x1 x2 x3 x4), M (B x1 x2 x3 x4 x5) => [H]
+    -> forall (x1:A1) (x2:A2 x1) (x3:A3 x1 x2) (x4:A4 x1 x2 x3) (x5:A5 x1 x2 x3 x4), M (B x1 x2 x3 x4 x5) =c> [H]
     retS (Build_dynamic _ (tfix5 B (eq_ind _ id b _ H)))
   | _ => raise (MFixException "Cannot typecheck the fixpoint. Perhaps you provided more than 5 arguments? If not, you can try providing the type to the fixpoint.")
   end.
