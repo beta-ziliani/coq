@@ -773,13 +773,15 @@ and instantiate dbg ts conv_t env sigma
 and should_try_fo args (h, args') =
   List.length args > 0 && List.length args' >= List.length args
 
+(* ?e a1 a2 = h b1 b2 b3 ---> ?e = h b1 /\ a1 = b2 /\ a2 = b3 *)
+(* |arr'| - |arr| = 1 *)
 and meta_fo dbg ts env sigma (evsubs, args) (h, args') =
-  let arr = Array.of_list args in
-  let arr' = Array.of_list args' in
-  unify_constr (dbg+1) ts env sigma (mkEvar evsubs)  
-    (mkApp (h, (Array.sub arr' 0 (Array.length arr' - Array.length arr)))) 
+  let arr = Array.of_list args in   
+  let arr' = Array.of_list args' in 
+  let n = Array.length arr' - Array.length arr in
+  unify_constr (dbg+1) ts env sigma (mkEvar evsubs) (mkApp (h, (Array.sub arr' 0 n)))
   &&= fun sigma' ->
-  ise_array2 sigma' (unify_constr (dbg+1) ts env) arr arr'
+  ise_array2 sigma' (unify_constr (dbg+1) ts env) arr (Array.sub arr' n (Array.length arr' - n))
 
 
 (* unifies ty with a product type from {name : a} to some Type *)

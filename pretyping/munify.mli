@@ -109,3 +109,5 @@ val unify' : ?conv_t:Evd.conv_pb -> int ->
   Names.transparent_state ->
   Environ.env ->
   Evd.evar_map -> (Term.constr * Term.constr list) -> (Term.constr * Term.constr list) -> bool * Evd.evar_map
+
+val should_try_fo : Term.constr list -> (Term.constr * Term.constr list) -> bool
