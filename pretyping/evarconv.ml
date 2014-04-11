@@ -893,11 +893,11 @@ let consider_remaining_unif_problems ?(ts=full_transparent_state) env evd =
 
 (* Main entry points *)
 
-let evar_conv_munify =
+let evar_conv_munify ts =
   if Munify.use_munify () then
-    Munify.unify_evar_conv
+    Munify.unify_evar_conv ts
   else
-    evar_conv_x
+    evar_conv_x ts
 
 let the_conv_x ?(eta=true) ?(ts=full_transparent_state) env t1 t2 evd =
   use_eta := eta;
