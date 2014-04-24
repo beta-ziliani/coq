@@ -709,7 +709,7 @@ and instantiate' dbg ts conv_t env sigma0 (ev, subs as uv) args (h, args' as t) 
     let t'' = Evd.instantiate_evar nc t' subsl in
     let ty' = Retyping.get_type_of env sigma1 t'' in
     let ty = Evd.existential_type sigma1 uv in
-    let p = unify_constr ~conv_t:Reduction.CUMUL (dbg+1) ts env sigma1 ty ty' &&= fun sigma2 ->
+    let p = unify_constr ~conv_t:Reduction.CUMUL (dbg+1) ts env sigma1 ty' ty &&= fun sigma2 ->
       let t' = Reductionops.nf_evar sigma2 t' in
       if Termops.occur_meta t' || Termops.occur_evar ev t' then 
 	err sigma2
