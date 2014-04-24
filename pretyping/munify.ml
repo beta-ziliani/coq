@@ -211,10 +211,11 @@ let (-.) n m =
    with ?e instead of the other way round, and this is in fact tried by the
    unification algorithm.
 *)
-let invert map ctx t subs args = 
+let invert map sigma ctx t subs args = 
   let sargs = subs @ args in
   let in_subs j = j < List.length ctx in
   let rec invert' inside_evar t i =
+    let t = Evarutil.whd_head_evar sigma t in
     match kind_of_term t with
       | Var id -> 
 	find_unique_var id sargs >>= fun j -> 
@@ -342,7 +343,7 @@ let unify_same env sigma ev subs1 subs2 =
 let fill_lambdas_invert_types map env sigma nc body subst args =
   List.fold_right (fun arg bdy-> bdy >>= fun bdy ->
     let ty = Retyping.get_type_of env sigma arg in
-    invert map nc ty subst args >>= fun ty ->
+    invert map sigma nc ty subst args >>= fun ty ->
     return (mkLambda (Names.Anonymous, ty, bdy))) args (return body)
 
 (* [check_conv_record (t1,l1) (t2,l2)] tries to decompose the problem
@@ -703,7 +704,7 @@ and instantiate' dbg ts conv_t env sigma0 (ev, subs as uv) args (h, args' as t) 
     let t = applist t in
     let subsl = Array.to_list subs in
     let map = ref Util.Intmap.empty in
-    invert map nc (Reductionops.nf_evar sigma0 t) subsl args >>= fun t' ->
+    invert map sigma0 nc t subsl args >>= fun t' ->
     fill_lambdas_invert_types map env sigma0 nc t' subsl args >>= fun t' ->
     let sigma1 = prune_all !map sigma0 in
     let t'' = Evd.instantiate_evar nc t' subsl in
