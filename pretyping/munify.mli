@@ -39,6 +39,7 @@ val intersect : Term.constr array -> Term.constr array -> int list option
 
 val invert :
   int list Util.Intmap.t ref ->
+  Evd.evar_map ->
   (Names.identifier * 'a * 'b) list ->
   Term.constr ->
   Term.types list -> Term.types list -> Term.constr option

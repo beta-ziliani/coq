@@ -84,10 +84,11 @@ let (||=) opt f =
   | (false, _) -> f ()
   | _ -> opt
 
-let success s = begin if !debug then Printf.printf "ok\n" else () end;  (true, s)
+let success s = (true, s)
 
-let err s = begin if !debug then Printf.printf "err\n" else () end ; (false, s)
+let err s = (false, s)
 
+let is_success s = match s with (true, _) -> true | _ -> false
 
 let id_substitution nc = 
   let s = Sign.fold_named_context (fun (n,_,_) s -> mkVar n :: s) nc ~init:[] in
@@ -341,10 +342,12 @@ let unify_same env sigma ev subs1 subs2 =
    fun xn : An^-1 => body].
 *)
 let fill_lambdas_invert_types map env sigma nc body subst args =
-  List.fold_right (fun arg bdy-> bdy >>= fun bdy ->
+  List.fold_right (fun arg r-> r >>= fun (ars, bdy) ->
     let ty = Retyping.get_type_of env sigma arg in
-    invert map sigma nc ty subst args >>= fun ty ->
-    return (mkLambda (Names.Anonymous, ty, bdy))) args (return body)
+    let ars = Util.list_drop_last ars in
+    invert map sigma nc ty subst ars >>= fun ty ->
+    return (ars, mkLambda (Names.Anonymous, ty, bdy))) args (return (args, body)) 
+  >>= fun (_, bdy) -> return bdy
 
 (* [check_conv_record (t1,l1) (t2,l2)] tries to decompose the problem
    (t1 l1) = (t2 l2) into a problem
@@ -415,6 +418,7 @@ let debug_str s l =
   if !debug then 
     begin
       print_bar l;
+      pad l;
       Printf.printf "%s\n" s
     end
   else
@@ -425,9 +429,9 @@ let debug_eq sigma env c1 c2 l =
     begin
       print_bar l;
       pad l;
-      Pp.msg (Termops.print_constr (Evarutil.nf_evar sigma (applist c1)));
+      Pp.msg (Termops.print_constr_env env (Evarutil.nf_evar sigma (applist c1)));
       Printf.printf "%s" " =?= ";
-      Pp.msg (Termops.print_constr (Evarutil.nf_evar sigma (applist c2)));
+      Pp.msg (Termops.print_constr_env env (Evarutil.nf_evar sigma (applist c2)));
       Printf.printf "\n" 
     end
   else
@@ -452,13 +456,14 @@ let rec unify' ?(conv_t=Reduction.CONV) dbg ts env sigma0 (c, l) (c', l') =
   let l, l' = l1 @ l, l2 @ l' in
   let t, t' = (c, l), (c', l') in
   debug_eq sigma0 env t t' dbg;
+  let res =
   match (kind_of_term c, kind_of_term c') with
   | Evar _, _ 
   | _, Evar _ ->
     one_is_meta dbg ts conv_t env sigma0 t t'
 
   (* Prop-Same, Set-Same, Type-Same, Type-Same-LE *)
-  | Sort s1, Sort s2 -> 
+  | Sort s1, Sort s2 -> debug_str "Type-Same" dbg;
     begin
     try
 	let sigma1 = match conv_t with
@@ -471,6 +476,7 @@ let rec unify' ?(conv_t=Reduction.CONV) dbg ts env sigma0 (c, l) (c', l') =
   (* Lam-Same *)
   | Lambda (name, t1, c1), Lambda (_, t2, c2) 
     when l = [] && l' = [] ->
+    debug_str "Lam-Same" dbg;
     let env' = Environ.push_rel (name, None, t1) env in
     unify_constr (dbg+1) ts env sigma0 t1 t2 &&= fun sigma1 ->
     unify_constr ~conv_t (dbg+1) ts env' sigma1 c1 c2 &&= fun sigma2 ->
@@ -478,6 +484,7 @@ let rec unify' ?(conv_t=Reduction.CONV) dbg ts env sigma0 (c, l) (c', l') =
 
   (* Prod-Same *)
   | Prod (name, t1, c1), Prod (_, t2, c2) ->
+    debug_str "Prod-Same" dbg;
     unify_constr (dbg+1) ts env sigma0 t1 t2 &&= fun sigma1 ->
     unify_constr ~conv_t (dbg+1) ts (Environ.push_rel (name,None,t1) env) sigma1 c1 c2
 
@@ -485,11 +492,13 @@ let rec unify' ?(conv_t=Reduction.CONV) dbg ts env sigma0 (c, l) (c', l') =
     when l = [] && l'= [] ->
     (
       (* Let-Same *)
+      debug_str "Let-Same" dbg;
       let env' = Environ.push_rel (name, Some trm1, ty1) env in
       unify_constr (dbg+1) ts env sigma0 trm1 trm2 &&= fun sigma1 ->
       unify_constr ~conv_t (dbg+1) ts env' sigma1 body1 body2
     ) ||= (fun _ ->
       (* Let-Zeta *)
+      debug_str "Let-Zeta" dbg;
       let body1 = subst1 trm1 body1 in
       let body2 = subst1 trm2 body2 in
       unify_constr ~conv_t (dbg+1) ts env sigma0 body1 body2
@@ -497,25 +506,32 @@ let rec unify' ?(conv_t=Reduction.CONV) dbg ts env sigma0 (c, l) (c', l') =
 
   (* Rigid-Same *)
   | Rel n1, Rel n2 when n1 = n2 && l = [] && l' = [] ->
+    debug_str "Rigid-Same" dbg;
     success sigma0
   | Var id1, Var id2 when id1 = id2 && l = [] && l' = [] -> 
+    debug_str "Rigid-Same" dbg;
     success sigma0
   | Const c1, Const c2 when Names.eq_constant c1 c2 && l = [] && l' = [] ->
+    debug_str "Rigid-Same" dbg;
     success sigma0
   | Ind c1, Ind c2 when Names.eq_ind c1 c2 && l = [] && l' = [] ->
+    debug_str "Rigid-Same" dbg;
     success sigma0
   | Construct c1, Construct c2 
     when Names.eq_constructor c1 c2 && l = [] && l' = []  ->
+    debug_str "Rigid-Same" dbg;
     success sigma0
 
   | CoFix (i1,(_,tys1,bds1 as recdef1)), CoFix (i2,(_,tys2,bds2))
     when i1 = i2 && l = [] && l' = [] ->
+    debug_str "CoFix-Same" dbg;
     ise_array2 sigma0 (unify_constr (dbg+1) ts env) tys1 tys2 &&= fun sigma1 ->
     ise_array2 sigma1 (unify_constr (dbg+1) ts (Environ.push_rec_types recdef1 env)) bds1 bds2
 	
   | Case (_, p1, c1, cl1), Case (_, p2, c2, cl2) 
     when l = [] && l' = [] ->
     (
+      debug_str "Case-Same" dbg;
       unify_constr (dbg+1) ts env sigma0 p1 p2 &&= fun sigma1 ->
       unify_constr (dbg+1) ts env sigma1 c1 c2 &&= fun sigma2 ->
       ise_array2 sigma2 (unify_constr (dbg+1) ts env) cl1 cl2
@@ -525,6 +541,7 @@ let rec unify' ?(conv_t=Reduction.CONV) dbg ts env sigma0 (c, l) (c', l') =
 
   | Fix (li1, (_, tys1, bds1 as recdef1)), Fix (li2, (_, tys2, bds2)) 
     when li1 = li2 && l = [] && l' = [] ->
+    debug_str "Fix-Same" dbg;
     ise_array2 sigma0 (unify_constr (dbg+1) ts env) tys1 tys2 &&= fun sigma1 ->
     ise_array2 sigma1 (unify_constr (dbg+1) ts (Environ.push_rec_types recdef1 env)) bds1 bds2
     ||= fun _ ->
@@ -556,15 +573,24 @@ let rec unify' ?(conv_t=Reduction.CONV) dbg ts env sigma0 (c, l) (c', l') =
     (
       let n = List.length l in
       let m = List.length l' in
-      if n = m && n > 0 then
-	unify' ~conv_t (dbg+1) ts env sigma0 (c, []) (c', []) &&= fun sigma1 ->
-        ise_list2 sigma1 (unify_constr (dbg+1) ts env) l l'
+      if n = m && n > 0 then 
+	begin 
+	  debug_str "App-FO" dbg;
+	  unify' ~conv_t (dbg+1) ts env sigma0 (c, []) (c', []) &&= fun sigma1 ->
+          ise_list2 sigma1 (unify_constr (dbg+1) ts env) l l'
+	end
       else
 	err sigma0
     ) ||= fun _ ->
     (
       try_step dbg conv_t ts env sigma0 t t'
     )
+  in
+  if is_success res then 
+    debug_str "ok" dbg
+  else
+    debug_str "err" dbg;
+  res
 
 and unify_constr ?(conv_t=Reduction.CONV) dbg ts env sigma0 t t' =
   unify' ~conv_t dbg ts env sigma0 (decompose_app t) (decompose_app t')
@@ -581,67 +607,88 @@ and one_is_meta dbg ts conv_t env sigma0 (c, l as t) (c', l' as t') =
     let (k1, s1 as e1), (k2, s2 as e2) = destEvar c, destEvar c' in
     if k1 = k2 then
       (* Meta-Same *)
-      unify_same env sigma0 k1 s1 s2 &&= fun sigma1 ->
-      ise_list2 sigma1 (unify_constr (dbg+1) ts env) l l'
+      begin
+	debug_str "Meta-Same-Same or Meta-Same" dbg;
+	unify_same env sigma0 k1 s1 s2 &&= fun sigma1 ->
+	ise_list2 sigma1 (unify_constr (dbg+1) ts env) l l'
+      end
     else
+      begin
       (* Meta-Meta *)
-      if k1 > k2 then
-	instantiate dbg ts conv_t env sigma0 e1 l t' ||= fun _ ->
-	instantiate dbg ts conv_t env sigma0 e2 l' t
-      else
-	instantiate dbg ts conv_t env sigma0 e2 l' t ||= fun _ ->
-	instantiate dbg ts conv_t env sigma0 e1 l t'
+	debug_str "Meta-Meta" dbg;
+	if k1 > k2 then
+	  instantiate dbg ts conv_t env sigma0 e1 l t' ||= fun _ ->
+	  instantiate dbg ts conv_t env sigma0 e2 l' t
+	else
+	  instantiate dbg ts conv_t env sigma0 e2 l' t ||= fun _ ->
+	  instantiate dbg ts conv_t env sigma0 e1 l t'
+      end
   else
     if isEvar c then
       if is_lift c' && List.length l' = 3 then
         run_and_unify dbg ts env sigma0 l' t
       else
+	begin
 	(* Meta-InstL *)
-	let e1 = destEvar c in
-	instantiate dbg ts conv_t env sigma0 e1 l t'
+	  debug_str "Meta-InstL" dbg;
+	  let e1 = destEvar c in
+	  instantiate dbg ts conv_t env sigma0 e1 l t'
+	end
     else
       if is_lift c && List.length l = 3 then
         run_and_unify dbg ts env sigma0 l t'
       else
+	begin
         (* Meta-InstR *)
-	let e2 = destEvar c' in
-	instantiate dbg ts conv_t env sigma0 e2 l' t
+	  debug_str "Meta-InstR" dbg;
+	  let e2 = destEvar c' in
+	  instantiate dbg ts conv_t env sigma0 e2 l' t
+	end
 
 and try_step ?(stuck=NotStucked) dbg conv_t ts env sigma0 (c, l as t) (c', l' as t') =
   match (kind_of_term c, kind_of_term c') with
   (* Lam-BetaR *)
   | _, Lambda (_, _, trm) when l' <> [] ->
+    debug_str "Lam-BetaR" dbg;
     let t2 = (subst1 (List.hd l') trm, List.tl l') in
     unify' ~conv_t (dbg+1) ts env sigma0 t t2 
   (* Lam-BetaL *)
   | Lambda (_, _, trm), _ when l <> [] ->
+    debug_str "Lame-BetaL" dbg;
     let t1 = (subst1 (List.hd l) trm, List.tl l) in
     unify' ~conv_t (dbg+1) ts env sigma0 t1 t'
 
   (* Let-ZetaR *)
   | _, LetIn (_, trm, _, body) ->
+    debug_str "Let-ZetaR" dbg;
     let t2 = (subst1 trm body, l') in
     unify' ~conv_t (dbg+1) ts env sigma0 t t2
   (* Let-ZetaL *)
   | LetIn (_, trm, _, body), _ ->
+    debug_str "Let-ZetaL" dbg;
     let t1 = (subst1 trm body, l) in
     unify' ~conv_t (dbg+1) ts env sigma0 t1 t'
 
   (* Rigid-DeltaR *)
   | _, Rel _ 
   | _, Var _ when has_definition ts env c' ->
+    debug_str "Rigid-Delta-VarR" dbg;
     unify' ~conv_t (dbg+1) ts env sigma0 t (get_def_app_stack env t')
 
   (* Rigid-DeltaL *)
   | Rel _, _ 
   | Var _, _ when has_definition ts env c ->
+    debug_str "Rigid-Delta-VarL" dbg;
     unify' ~conv_t (dbg+1) ts env sigma0 (get_def_app_stack env t) t'
 
   | _, Case _ | _, Fix _ when stuck <> StuckedRight ->
     let t2 = evar_apprec ts env sigma0 t' in
     if t' <> t2 then
+      begin
       (* WhdR *)
-      unify' ~conv_t (dbg+1) ts env sigma0 t t2
+	debug_str "WhdR" dbg;
+	unify' ~conv_t (dbg+1) ts env sigma0 t t2
+      end
     else if stuck = NotStucked then
       try_step ~stuck:StuckedRight dbg conv_t ts env sigma0 t t'
     else err sigma0
@@ -649,8 +696,11 @@ and try_step ?(stuck=NotStucked) dbg conv_t ts env sigma0 (c, l as t) (c', l' as
   | Case _, _ | Fix _, _ when stuck <> StuckedLeft ->
     let t2 = evar_apprec ts env sigma0 t in
     if t <> t2 then
+      begin
       (* WhdL *)
-      unify' ~conv_t (dbg+1) ts env sigma0 t2 t'
+	debug_str "WhdL" dbg;
+	unify' ~conv_t (dbg+1) ts env sigma0 t2 t'
+      end
     else if stuck = NotStucked then
       try_step ~stuck:StuckedLeft dbg conv_t ts env sigma0 t t'
     else err sigma0
@@ -659,31 +709,42 @@ and try_step ?(stuck=NotStucked) dbg conv_t ts env sigma0 (c, l as t) (c', l' as
   | _, Const _ when has_definition ts env c' && stuck = NotStucked ->
       if is_stuck ts env sigma0 t' then
 	try_step ~stuck:StuckedRight dbg conv_t ts env sigma0 t t'
-      else
-	unify' ~conv_t (dbg+1) ts env sigma0 t (get_def_app_stack env t')
+      else 
+	begin
+	  debug_str "Rigid-Delta-ConsR" dbg;
+	  unify' ~conv_t (dbg+1) ts env sigma0 t (get_def_app_stack env t')
+	end
   | Const _, _ when has_definition ts env c && stuck = NotStucked ->
       if is_stuck ts env sigma0 t then
-	try_step ~stuck:StuckedLeft dbg conv_t ts env sigma0 t t'
+	begin
+	  debug_str "Rigid-Delta-ConsL" dbg;
+	  try_step ~stuck:StuckedLeft dbg conv_t ts env sigma0 t t'
+	end
       else
 	unify' ~conv_t (dbg+1) ts env sigma0 (get_def_app_stack env t) t'
   | _, Const _ when has_definition ts env c' && stuck = StuckedLeft ->
+    debug_str "Rigid-Delta-ConsR" dbg;
     unify' ~conv_t (dbg+1) ts env sigma0 t (get_def_app_stack env t')
   | Const _, _ when has_definition ts env c && stuck = StuckedRight ->
+    debug_str "Rigid-Delta-ConsL" dbg;
     unify' ~conv_t (dbg+1) ts env sigma0 (get_def_app_stack env t) t'
 
   | _, Const _ when has_definition ts env c' ->
+    debug_str "Rigid-Delta-ConsR" dbg;
     unify' ~conv_t (dbg+1) ts env sigma0 t (get_def_app_stack env t')
   | Const _, _ when has_definition ts env c ->
+    debug_str "Rigid-Delta-ConsL" dbg;
     unify' ~conv_t (dbg+1) ts env sigma0 (get_def_app_stack env t) t'
 
-(*      
-  (* Lam-EtaL *)
-  | Lambda (name, t1, c1), _ when l = [] ->
-      eta_match ts env sigma0 (name, t1, c1) t'
   (* Lam-EtaR *)
   | _, Lambda (name, t1, c1) when l' = [] ->
-      eta_match ts env sigma0 (name, t1, c1) t
-*)
+    debug_str "Lam-EtaR" dbg;
+    eta_match dbg ts env sigma0 (name, t1, c1) t
+  (* Lam-EtaL *)
+  | Lambda (name, t1, c1), _ when l = [] ->
+    debug_str "Lam-EtaL" dbg;
+    eta_match dbg ts env sigma0 (name, t1, c1) t'
+
   | _, _ -> err sigma0
 
 and is_stuck ts env sigma (hd, args) =
@@ -725,8 +786,11 @@ and instantiate' dbg ts conv_t env sigma0 (ev, subs as uv) args (h, args' as t) 
     | Some r -> r
     | None -> 
         if should_try_fo args t then
+	  begin
   	  (* Meta-FO *)
-	  meta_fo dbg ts env sigma0 (uv, args) t
+	    debug_str "Meta-FO" dbg;
+	    meta_fo dbg ts env sigma0 (uv, args) t
+	  end
         else
 	  err sigma0
 
@@ -758,8 +822,11 @@ and instantiate dbg ts conv_t env sigma
       with CannotPrune -> err sigma
     else 
       if should_try_fo args (h, args') then
+	begin
 	(* Meta-FO *)
-	meta_fo dbg ts env sigma (evsubs, args) (h, args')
+	  debug_str "Meta-FO" dbg;
+	  meta_fo dbg ts env sigma (evsubs, args) (h, args')
+	end
       else
 	err sigma
   else
@@ -786,8 +853,7 @@ and meta_fo dbg ts env sigma (evsubs, args) (h, args') =
 
 
 (* unifies ty with a product type from {name : a} to some Type *)
-(*
-and check_product ts env sigma ty (name, a) =
+and check_product dbg ts env sigma ty (name, a) =
   let nc = Environ.named_context env in
   let naid = Namegen.next_name_away name (Termops.ids_of_named_context nc) in
   let nc' = (naid, None, a) :: nc in
@@ -796,16 +862,15 @@ and check_product ts env sigma ty (name, a) =
   let evi = Evd.make_evar (Environ.val_of_named_context nc') (mkType univ) in 
   let sigma'' = Evd.add sigma' v evi in
   let idsubst = Array.append [| mkRel 1 |] (id_substitution nc) in
-  unify' ts env sigma'' ty (mkProd (Names.Name naid, a, mkEvar(v, idsubst)))
-*)
-(*
-and eta_match ts env sigma0 (name, a, t1) (th, tl as t) =
+  unify_constr (dbg+1) ts env sigma'' ty (mkProd (Names.Name naid, a, mkEvar(v, idsubst)))
+
+and eta_match dbg ts env sigma0 (name, a, t1) (th, tl as t) =
   let env' = Environ.push_rel (name, None, a) env in
   let ty = Retyping.get_type_of env sigma0 (applist t) in
   let t' = applist (lift 1 th, List.map (lift 1) tl @ [mkRel 1]) in
-  check_product ts env sigma0 ty (name, a) &&= fun sigma1 ->
-  unify' ts env' sigma1 t1 t'
-*)
+  check_product dbg ts env sigma0 ty (name, a) &&= fun sigma1 ->
+  unify_constr (dbg+1) ts env' sigma1 t1 t'
+
 and conv_record dbg trs env evd t t' =
   let (c,bs,(params,params1),(us,us2),(ts,ts1),c1,(n,t2)) = check_conv_record t t' in
   let (evd',ks,_) =
@@ -817,6 +882,7 @@ and conv_record dbg trs env evd t t' =
 	 (i', ev :: ks, m - 1))
       (evd,[],List.length bs - 1) bs
   in
+  debug_str "CS" dbg;
   ise_list2 evd' (fun i x1 x -> unify_constr (dbg+1) trs env i x1 (substl ks x))
     params1 params &&= fun i ->
   ise_list2 i (fun i u1 u -> unify_constr (dbg+1) trs env i u1 (substl ks u))
