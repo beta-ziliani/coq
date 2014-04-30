@@ -76,6 +76,15 @@ val instantiate' : int ->
   Term.types list ->
   Term.constr * Term.types list -> bool * Evd.evar_map
 
+val instantiate : int ->
+  Names.transparent_state ->
+  Evd.conv_pb ->
+  Environ.env ->
+  Evd.evar_map ->
+  Evd.evar * Term.types array ->
+  Term.types list ->
+  Term.constr * Term.types list -> bool * Evd.evar_map
+
 val meta_fo : int ->
   Names.transparent_state ->
   Environ.env ->

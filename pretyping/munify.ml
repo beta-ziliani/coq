@@ -603,6 +603,14 @@ and run_and_unify dbg ts env sigma0 args ty =
   | Some (sigma2, v') -> unify' (dbg+1) ts env sigma2 (decompose_app v) (decompose_app v')
   | _ -> err sigma0
 
+and try_solve_simple_eqn dbg ts env sigma evsubs args t =
+    let t = Evarutil.solve_pattern_eqn env args (applist t) in
+    match Evarutil.solve_simple_eqn (unify_evar_conv ts) env sigma (None, evsubs, t) with
+    | (_, false) -> err sigma
+    | (sigma', true) -> Printf.printf "%s" "solve_simple_eqn solved it: ";
+      debug_eq sigma env (mkEvar evsubs, []) (decompose_app t) dbg;
+      success sigma'
+   
 and one_is_meta dbg ts conv_t env sigma0 (c, l as t) (c', l' as t') =
   if isEvar c && isEvar c' then
     let (k1, s1 as e1), (k2, s2 as e2) = destEvar c, destEvar c' in
@@ -617,12 +625,16 @@ and one_is_meta dbg ts conv_t env sigma0 (c, l as t) (c', l' as t') =
       begin
       (* Meta-Meta *)
 	debug_str "Meta-Meta" dbg;
+        (
 	if k1 > k2 then
 	  instantiate dbg ts conv_t env sigma0 e1 l t' ||= fun _ ->
 	  instantiate dbg ts conv_t env sigma0 e2 l' t
 	else
 	  instantiate dbg ts conv_t env sigma0 e2 l' t ||= fun _ ->
 	  instantiate dbg ts conv_t env sigma0 e1 l t'
+        ) ||= fun _ ->
+          try_solve_simple_eqn dbg ts env sigma0 e1 l t' ||= fun _ ->
+          try_solve_simple_eqn dbg ts env sigma0 e2 l' t
       end
   else
     if isEvar c then
@@ -633,7 +645,8 @@ and one_is_meta dbg ts conv_t env sigma0 (c, l as t) (c', l' as t') =
 	(* Meta-InstL *)
 	  debug_str "Meta-InstL" dbg;
 	  let e1 = destEvar c in
-	  instantiate dbg ts conv_t env sigma0 e1 l t'
+	  instantiate dbg ts conv_t env sigma0 e1 l t' ||= fun _ ->
+          try_solve_simple_eqn dbg ts env sigma0 e1 l t'
 	end
     else
       if is_lift c && List.length l = 3 then
@@ -643,7 +656,8 @@ and one_is_meta dbg ts conv_t env sigma0 (c, l as t) (c', l' as t') =
         (* Meta-InstR *)
 	  debug_str "Meta-InstR" dbg;
 	  let e2 = destEvar c' in
-	  instantiate dbg ts conv_t env sigma0 e2 l' t
+	  instantiate dbg ts conv_t env sigma0 e2 l' t ||= fun _ ->
+          try_solve_simple_eqn dbg ts env sigma0 e2 l' t
 	end
 
 and try_step ?(stuck=NotStucked) dbg conv_t ts env sigma0 (c, l as t) (c', l' as t') =
@@ -842,13 +856,8 @@ and instantiate dbg ts conv_t env sigma
       end
     else
       err sigma
-  ) ||= fun _ ->
-    match Evarutil.solve_simple_eqn (unify_evar_conv ts) env sigma (None, evsubs, applist t) with
-    | (_, false) -> err sigma
-    | (sigma', true) -> Printf.printf "%s" "solve_simple_eqn solved it: ";
-      debug_eq sigma env (mkEvar evsubs, []) t dbg;
-      success sigma'
-    
+  )
+ 
 and should_try_fo args (h, args') =
   List.length args > 0 && List.length args' >= List.length args
 
