@@ -1,7 +1,5 @@
-
 Set Munify Debug.
 Set Use Munify.
-Check (eq_refl : _ = nat).
 
 Structure Inner := mkI { is :> Type }.
 Structure Outer := mkO { os :> Inner }.
@@ -80,3 +78,29 @@ Qed.
 
 
 
+Section VarOrRel.
+Variable v : nat.
+Structure Pnat' := mkP' { getp' : nat }.
+Definition my_getp' := getp'.
+Canonical Structure vP_var := mkP' v.
+Canonical Structure vP_rel x := mkP' x.
+Definition var_test := (refl_equal _ : W (my_getp' _)  = W v).
+Definition rel_test x := (refl_equal _ : W (my_getp' _)  = W x).
+End VarOrRel.
+
+Section VarOrRel'.
+Variable v : nat.
+Definition var_test' := (refl_equal _ : W (my_getp' _)  = W v).
+Definition rel_test' x := (refl_equal _ : W (my_getp' _)  = W x).
+End VarOrRel'.
+
+Section Vars.
+Variable v : nat.
+Structure A := mkA { geta : nat }.
+Canonical Structure vA_var := mkA v.
+Canonical Structure vA_rel x := mkA x.
+Unset Use Munify.
+Set Use Evarconv For CS.
+Check (eq_refl _ : geta _ = v).
+Check (let hide := v in eq_refl _ :  geta _ = hide).
+End Vars.

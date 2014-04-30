@@ -308,7 +308,7 @@ let prune_all map evd =
 (* pre: |s1| = |s2| 
    pos: None if s1 or s2 are not equal and not var to var subs
         Some l with l list of indexes where s1 and s2 do not agree *)
-let intersect sigma env s1 s2 =
+let intersect env sigma s1 s2 =
   let n = Array.length s1 in
   let rec intsct i =
     if i < n then
@@ -327,7 +327,7 @@ let intersect sigma env s1 s2 =
 
 (* pre: ev is a not-defined evar *)
 let unify_same env sigma ev subs1 subs2 =
-  match intersect sigma env subs1 subs2 with
+  match intersect env sigma subs1 subs2 with
   | Some [] -> success sigma
   | Some l -> begin
               try 

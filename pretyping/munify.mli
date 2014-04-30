@@ -35,7 +35,10 @@ val id_substitution : Sign.named_context -> Term.constr array
 
 val find_unique : ('a -> bool) -> ('a -> 'b) -> 'b -> 'a list -> int option
   
-val intersect : Term.constr array -> Term.constr array -> int list option
+val intersect : 
+  Environ.env ->
+  Evd.evar_map ->
+  Term.constr array -> Term.constr array -> int list option
 
 val invert :
   int list Util.Intmap.t ref ->
