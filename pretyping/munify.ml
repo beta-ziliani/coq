@@ -762,7 +762,7 @@ and instantiate' dbg ts conv_t env sigma0 (ev, subs as uv) args (h, args' as t) 
   let evi = Evd.find_undefined sigma0 ev in
   let nc = Evd.evar_filtered_context evi in
   let res = 
-    let t = applist t in
+    let t = Reductionops.whd_beta sigma0 (applist t) in (* beta-reduce to remove dependencies *)
     let subsl = Array.to_list subs in
     let map = ref Util.Intmap.empty in
     invert map sigma0 nc t subsl args >>= fun t' ->
