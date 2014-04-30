@@ -306,19 +306,20 @@ let prune_all map evd =
   List.fold_left prune evd (Util.Intmap.bindings map)
 
 (* pre: |s1| = |s2| 
-   pos: None if s1 or s2 are not var to var subs
+   pos: None if s1 or s2 are not equal and not var to var subs
         Some l with l list of indexes where s1 and s2 do not agree *)
-let intersect s1 s2 =
+let intersect sigma env s1 s2 =
   let n = Array.length s1 in
   let rec intsct i =
     if i < n then
-      if (isVarOrRel s1.(i) && isVarOrRel s2.(i)) then
-	intsct (i+1) >>= fun l ->
-	if (isVar s1.(i) && is_same_var s1.(i) s2.(i)) ||
-	   (isRel s1.(i) && is_same_rel s1.(i) s2.(i)) 
-	then Some l
-	else Some (i :: l)
-      else None
+      intsct (i+1) >>= fun l ->
+      if eq_constr s1.(i) s2.(i) then
+        Some l
+      else
+        if (isVar s1.(i) || isRel s1.(i)) &&  (isVar s2.(i) || isRel s2.(i)) then
+          Some (i :: l) (* both position holds variables: they are indeed different *)
+        else
+          None
     else Some []
   in 
   assert (Array.length s2 = n) ;
@@ -326,7 +327,7 @@ let intersect s1 s2 =
 
 (* pre: ev is a not-defined evar *)
 let unify_same env sigma ev subs1 subs2 =
-  match intersect subs1 subs2 with
+  match intersect sigma env subs1 subs2 with
   | Some [] -> success sigma
   | Some l -> begin
               try 
