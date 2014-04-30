@@ -814,24 +814,34 @@ and instantiate' dbg ts conv_t env sigma0 (ev, subs as uv) args (h, args' as t) 
 (* by invariant, we know that ev is uninstantiated *)
 and instantiate dbg ts conv_t env sigma 
     (ev, subs as evsubs) args (h, args' as t) =
-  begin
-  if is_variable_subs subs then
-    if is_variable_args args then
-      try 
-	instantiate' dbg ts conv_t env sigma evsubs args t
-      with CannotPrune -> err sigma
-    else 
-      if should_try_fo args (h, args') then
-	begin
-	(* Meta-FO *)
-	  debug_str "Meta-FO" dbg;
-	  meta_fo dbg ts env sigma (evsubs, args) (h, args')
-	end
-      else
-	err sigma
-  else
-    err sigma
-  end ||= fun _ ->
+  (
+    if is_variable_subs subs then
+      ( 
+        if is_variable_args args then
+          try 
+	    instantiate' dbg ts conv_t env sigma evsubs args t
+          with CannotPrune -> err sigma
+        else err sigma
+      ) ||= (fun _ ->
+        if should_try_fo args (h, args') then
+	  begin
+	  (* Meta-FO *)
+	    debug_str "Meta-FO" dbg;
+	    meta_fo dbg ts env sigma (evsubs, args) (h, args')
+	  end
+        else
+	  err sigma
+        )   
+    else err sigma
+  ) ||= (fun _ ->
+    if isLambda h && List.length args' = 0 then
+      begin
+        debug_str "Lam-EtaR" dbg;
+        eta_match dbg ts env sigma (destLambda h) (mkEvar evsubs, args)
+      end
+    else
+      err sigma
+  ) ||= fun _ ->
     match Evarutil.solve_simple_eqn (unify_evar_conv ts) env sigma (None, evsubs, applist t) with
     | (_, false) -> err sigma
     | (sigma', true) -> Printf.printf "%s" "solve_simple_eqn solved it: ";
