@@ -463,91 +463,6 @@ let rec unify' ?(conv_t=Reduction.CONV) dbg ts env sigma0 (c, l) (c', l') =
   | _, Evar _ ->
     one_is_meta dbg ts conv_t env sigma0 t t'
 
-  (* Prop-Same, Set-Same, Type-Same, Type-Same-LE *)
-  | Sort s1, Sort s2 -> debug_str "Type-Same" dbg;
-    begin
-    try
-	let sigma1 = match conv_t with
-      | Reduction.CONV -> Evd.set_eq_sort sigma0 s1 s2 
-      | _ -> Evd.set_leq_sort sigma0 s1 s2
-      in (true, sigma1)
-    with _ -> err sigma0 
-    end
-
-  (* Lam-Same *)
-  | Lambda (name, t1, c1), Lambda (_, t2, c2) 
-    when l = [] && l' = [] ->
-    debug_str "Lam-Same" dbg;
-    let env' = Environ.push_rel (name, None, t1) env in
-    unify_constr (dbg+1) ts env sigma0 t1 t2 &&= fun sigma1 ->
-    unify_constr ~conv_t (dbg+1) ts env' sigma1 c1 c2 &&= fun sigma2 ->
-    success sigma2
-
-  (* Prod-Same *)
-  | Prod (name, t1, c1), Prod (_, t2, c2) ->
-    debug_str "Prod-Same" dbg;
-    unify_constr (dbg+1) ts env sigma0 t1 t2 &&= fun sigma1 ->
-    unify_constr ~conv_t (dbg+1) ts (Environ.push_rel (name,None,t1) env) sigma1 c1 c2
-
-  | LetIn (name, trm1, ty1, body1), LetIn (_, trm2, ty2, body2) 
-    when l = [] && l'= [] ->
-    (
-      (* Let-Same *)
-      debug_str "Let-Same" dbg;
-      let env' = Environ.push_rel (name, Some trm1, ty1) env in
-      unify_constr (dbg+1) ts env sigma0 trm1 trm2 &&= fun sigma1 ->
-      unify_constr ~conv_t (dbg+1) ts env' sigma1 body1 body2
-    ) ||= (fun _ ->
-      (* Let-Zeta *)
-      debug_str "Let-Zeta" dbg;
-      let body1 = subst1 trm1 body1 in
-      let body2 = subst1 trm2 body2 in
-      unify_constr ~conv_t (dbg+1) ts env sigma0 body1 body2
-    )
-
-  (* Rigid-Same *)
-  | Rel n1, Rel n2 when n1 = n2 && l = [] && l' = [] ->
-    debug_str "Rigid-Same" dbg;
-    success sigma0
-  | Var id1, Var id2 when id1 = id2 && l = [] && l' = [] -> 
-    debug_str "Rigid-Same" dbg;
-    success sigma0
-  | Const c1, Const c2 when Names.eq_constant c1 c2 && l = [] && l' = [] ->
-    debug_str "Rigid-Same" dbg;
-    success sigma0
-  | Ind c1, Ind c2 when Names.eq_ind c1 c2 && l = [] && l' = [] ->
-    debug_str "Rigid-Same" dbg;
-    success sigma0
-  | Construct c1, Construct c2 
-    when Names.eq_constructor c1 c2 && l = [] && l' = []  ->
-    debug_str "Rigid-Same" dbg;
-    success sigma0
-
-  | CoFix (i1,(_,tys1,bds1 as recdef1)), CoFix (i2,(_,tys2,bds2))
-    when i1 = i2 && l = [] && l' = [] ->
-    debug_str "CoFix-Same" dbg;
-    ise_array2 sigma0 (unify_constr (dbg+1) ts env) tys1 tys2 &&= fun sigma1 ->
-    ise_array2 sigma1 (unify_constr (dbg+1) ts (Environ.push_rec_types recdef1 env)) bds1 bds2
-	
-  | Case (_, p1, c1, cl1), Case (_, p2, c2, cl2) 
-    when l = [] && l' = [] ->
-    (
-      debug_str "Case-Same" dbg;
-      unify_constr (dbg+1) ts env sigma0 p1 p2 &&= fun sigma1 ->
-      unify_constr (dbg+1) ts env sigma1 c1 c2 &&= fun sigma2 ->
-      ise_array2 sigma2 (unify_constr (dbg+1) ts env) cl1 cl2
-    ) 
-    ||= fun _ ->
-      try_step dbg conv_t ts env sigma0 t t'
-
-  | Fix (li1, (_, tys1, bds1 as recdef1)), Fix (li2, (_, tys2, bds2)) 
-    when li1 = li2 && l = [] && l' = [] ->
-    debug_str "Fix-Same" dbg;
-    ise_array2 sigma0 (unify_constr (dbg+1) ts env) tys1 tys2 &&= fun sigma1 ->
-    ise_array2 sigma1 (unify_constr (dbg+1) ts (Environ.push_rec_types recdef1 env)) bds1 bds2
-    ||= fun _ ->
-      try_step dbg conv_t ts env sigma0 t t'
-
   | _, _  ->
     (
       if (isConst c || isConst c') && not (eq_constr c c') then
@@ -574,10 +489,10 @@ let rec unify' ?(conv_t=Reduction.CONV) dbg ts env sigma0 (c, l) (c', l') =
     (
       let n = List.length l in
       let m = List.length l' in
-      if n = m && n > 0 then 
+      if n = m then 
 	begin 
 	  debug_str "App-FO" dbg;
-	  unify' ~conv_t (dbg+1) ts env sigma0 (c, []) (c', []) &&= fun sigma1 ->
+	  compare_heads conv_t (dbg+1) ts env sigma0 c c' &&= fun sigma1 ->
           ise_list2 sigma1 (unify_constr (dbg+1) ts env) l l'
 	end
       else
@@ -659,6 +574,88 @@ and one_is_meta dbg ts conv_t env sigma0 (c, l as t) (c', l' as t') =
 	  instantiate dbg ts conv_t env sigma0 e2 l' t ||= fun _ ->
           try_solve_simple_eqn dbg ts env sigma0 e2 l' t
 	end
+
+and compare_heads conv_t dbg ts env sigma0 c c' =
+  match (kind_of_term c, kind_of_term c') with
+  (* Prop-Same, Set-Same, Type-Same, Type-Same-LE *)
+  | Sort s1, Sort s2 -> debug_str "Type-Same" dbg;
+    begin
+    try
+	let sigma1 = match conv_t with
+      | Reduction.CONV -> Evd.set_eq_sort sigma0 s1 s2 
+      | _ -> Evd.set_leq_sort sigma0 s1 s2
+      in (true, sigma1)
+    with _ -> err sigma0 
+    end
+
+  (* Lam-Same *)
+  | Lambda (name, t1, c1), Lambda (_, t2, c2) ->
+    debug_str "Lam-Same" dbg;
+    let env' = Environ.push_rel (name, None, t1) env in
+    unify_constr (dbg+1) ts env sigma0 t1 t2 &&= fun sigma1 ->
+    unify_constr ~conv_t (dbg+1) ts env' sigma1 c1 c2 &&= fun sigma2 ->
+    success sigma2
+
+  (* Prod-Same *)
+  | Prod (name, t1, c1), Prod (_, t2, c2) ->
+    debug_str "Prod-Same" dbg;
+    unify_constr (dbg+1) ts env sigma0 t1 t2 &&= fun sigma1 ->
+    unify_constr ~conv_t (dbg+1) ts (Environ.push_rel (name,None,t1) env) sigma1 c1 c2
+
+  | LetIn (name, trm1, ty1, body1), LetIn (_, trm2, ty2, body2) ->
+    (
+      (* Let-Same *)
+      debug_str "Let-Same" dbg;
+      let env' = Environ.push_rel (name, Some trm1, ty1) env in
+      unify_constr (dbg+1) ts env sigma0 trm1 trm2 &&= fun sigma1 ->
+      unify_constr ~conv_t (dbg+1) ts env' sigma1 body1 body2
+    ) ||= (fun _ ->
+      (* Let-Zeta *)
+      debug_str "Let-Zeta" dbg;
+      let body1 = subst1 trm1 body1 in
+      let body2 = subst1 trm2 body2 in
+      unify_constr ~conv_t (dbg+1) ts env sigma0 body1 body2
+    )
+
+  (* Rigid-Same *)
+  | Rel n1, Rel n2 when n1 = n2 ->
+    debug_str "Rigid-Same" dbg;
+    success sigma0
+  | Var id1, Var id2 when id1 = id2 -> 
+    debug_str "Rigid-Same" dbg;
+    success sigma0
+  | Const c1, Const c2 when Names.eq_constant c1 c2 ->
+    debug_str "Rigid-Same" dbg;
+    success sigma0
+  | Ind c1, Ind c2 when Names.eq_ind c1 c2 ->
+    debug_str "Rigid-Same" dbg;
+    success sigma0
+  | Construct c1, Construct c2 
+    when Names.eq_constructor c1 c2  ->
+    debug_str "Rigid-Same" dbg;
+    success sigma0
+
+  | CoFix (i1,(_,tys1,bds1 as recdef1)), CoFix (i2,(_,tys2,bds2))
+    when i1 = i2 ->
+    debug_str "CoFix-Same" dbg;
+    ise_array2 sigma0 (unify_constr (dbg+1) ts env) tys1 tys2 &&= fun sigma1 ->
+    ise_array2 sigma1 (unify_constr (dbg+1) ts (Environ.push_rec_types recdef1 env)) bds1 bds2
+	
+  | Case (_, p1, c1, cl1), Case (_, p2, c2, cl2) ->
+    (
+      debug_str "Case-Same" dbg;
+      unify_constr (dbg+1) ts env sigma0 p1 p2 &&= fun sigma1 ->
+      unify_constr (dbg+1) ts env sigma1 c1 c2 &&= fun sigma2 ->
+      ise_array2 sigma2 (unify_constr (dbg+1) ts env) cl1 cl2
+    ) 
+
+  | Fix (li1, (_, tys1, bds1 as recdef1)), Fix (li2, (_, tys2, bds2)) 
+    when li1 = li2 ->
+    debug_str "Fix-Same" dbg;
+    ise_array2 sigma0 (unify_constr (dbg+1) ts env) tys1 tys2 &&= fun sigma1 ->
+    ise_array2 sigma1 (unify_constr (dbg+1) ts (Environ.push_rec_types recdef1 env)) bds1 bds2
+
+  | _, _ -> err sigma0
 
 and try_step ?(stuck=NotStucked) dbg conv_t ts env sigma0 (c, l as t) (c', l' as t') =
   match (kind_of_term c, kind_of_term c') with
