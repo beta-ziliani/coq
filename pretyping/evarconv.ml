@@ -176,7 +176,11 @@ let rec evar_conv_x ts env evd pbty term1 term2 =
   let ground_test =
     if is_ground_term evd term1 && is_ground_term evd term2 then
       if is_trans_fconv pbty ts env evd term1 term2 then
-        Some true
+        begin
+          Munify.debug_eq evd env (decompose_app term1) (decompose_app term2) 0;
+          Munify.debug_str "Reduce-Same" 0;
+          Some true
+        end
       else if is_ground_env evd env then Some false
       else None
     else None in
@@ -188,11 +192,19 @@ let rec evar_conv_x ts env evd pbty term1 term2 =
         let term1 = apprec_nohdbeta ts env evd term1 in
         let term2 = apprec_nohdbeta ts env evd term2 in
         if is_undefined_evar evd term1 then
-          solve_simple_eqn (evar_conv_x ts) env evd
-	    (position_problem true pbty,destEvar term1,term2)
+          begin
+            Munify.debug_eq evd env (decompose_app term1) (decompose_app term2) 0;
+            Munify.debug_str "Meta-InstL" 0;
+            solve_simple_eqn (evar_conv_x ts) env evd
+	      (position_problem true pbty,destEvar term1,term2)
+          end
         else if is_undefined_evar evd term2 then
-          solve_simple_eqn (evar_conv_x ts) env evd
-	    (position_problem false pbty,destEvar term2,term1)
+          begin
+            Munify.debug_eq evd env (decompose_app term1) (decompose_app term2) 0;
+            Munify.debug_str "Meta-InstR" 0;
+            solve_simple_eqn (evar_conv_x ts) env evd
+	      (position_problem false pbty,destEvar term2,term1)
+          end
         else
           evar_eqappr_x ts env evd pbty
             (decompose_app term1) (decompose_app term2)
@@ -210,15 +222,18 @@ and evar_eqappr_x ?(rhs_is_already_stuck = false)
       let env' = push_rel (na,None,c) env in
       let appr1 = evar_apprec ts env' evd [] body in
       let appr2 = (lift 1 term', List.map (lift 1) l' @ [mkRel 1]) in
+      Munify.debug_str "Eta" 0;
       if onleft then evar_eqappr_x ts env' evd CONV appr1 appr2
       else evar_eqappr_x ts env' evd CONV appr2 appr1
     end
   in
+  Munify.debug_eq evd env appr1 appr2 0;
 
   (* Evar must be undefined since we have flushed evars *)
   match (flex_kind_of_term term1 l1, flex_kind_of_term term2 l2) with
     | Flexible (sp1,al1 as ev1), Flexible (sp2,al2 as ev2) ->
 	let f1 i =
+          Munify.debug_str "Meta-Meta" 0;
 	  if List.length l1 > List.length l2 then
             let (deb1,rest1) = list_chop (List.length l1-List.length l2) l1 in
             ise_and i
@@ -235,11 +250,14 @@ and evar_eqappr_x ?(rhs_is_already_stuck = false)
                   (fun i -> evar_conv_x ts env i CONV) l1 rest2)]
 	and f2 i =
           if sp1 = sp2 then
-            ise_and i
-            [(fun i -> ise_list2 i
+            begin
+              Munify.debug_str "Meta-Same" 0;
+              ise_and i
+                [(fun i -> ise_list2 i
                   (fun i -> evar_conv_x ts env i CONV) l1 l2);
-             (fun i -> solve_refl (evar_conv_x ts) env i sp1 al1 al2,
-                  true)]
+                 (fun i -> solve_refl (evar_conv_x ts) env i sp1 al1 al2,
+                   true)]
+            end
           else (i,false)
 	in
 	ise_try evd [f1; f2]
@@ -252,6 +270,7 @@ and evar_eqappr_x ?(rhs_is_already_stuck = false)
 	    (* Preserve generality (except that CCI has no eta-conversion) *)
 	    let t2 = nf_evar evd (applist appr2) in
 	    let t2 = solve_pattern_eqn env l1' t2 in
+            Munify.debug_str "Meta-InstL" 0;
 	    solve_simple_eqn (evar_conv_x ts) env evd
 	      (position_problem true pbty,ev1,t2)
           | None -> (i,false)
@@ -263,13 +282,17 @@ and evar_eqappr_x ?(rhs_is_already_stuck = false)
 	    (* (heuristic that gives acceptable results in practice) *)
 	    let (deb2,rest2) =
               list_chop (List.length l2-List.length l1) l2 in
-            ise_and i
+            begin
+              Munify.debug_str "Meta-FO" 0;
+              ise_and i
               (* First compare extra args for better failure message *)
-              [(fun i -> ise_list2 i
+                [(fun i -> ise_list2 i
                   (fun i -> evar_conv_x ts env i CONV) l1 rest2);
-               (fun i -> evar_conv_x ts env i pbty term1 (applist(term2,deb2)))]
+                 (fun i -> evar_conv_x ts env i pbty term1 (applist(term2,deb2)))]
+            end
           else (i,false)
 	and f3 i =
+          Munify.debug_str "Meta-ReduceR" 0;
 	  match eval_flexible_term ts env flex2 with
 	    | Some v2 ->
 		evar_eqappr_x ts env i pbty appr1 (evar_apprec ts env i l2 v2)
@@ -285,6 +308,7 @@ and evar_eqappr_x ?(rhs_is_already_stuck = false)
 	    (* Preserve generality (except that CCI has no eta-conversion) *)
 	    let t1 = nf_evar evd (applist appr1) in
 	    let t1 = solve_pattern_eqn env l2 t1 in
+            Munify.debug_str "Meta-InstR" 0;
 	    solve_simple_eqn (evar_conv_x ts) env evd
 	      (position_problem false pbty,ev2,t1)
           | None -> (i,false)
@@ -295,16 +319,20 @@ and evar_eqappr_x ?(rhs_is_already_stuck = false)
 	    (* Try first-order unification *)
 	    (* (heuristic that gives acceptable results in practice) *)
             let (deb1,rest1) = list_chop (List.length l1-List.length l2) l1 in
-            ise_and i
-            (* First compare extra args for better failure message *)
-              [(fun i -> ise_list2 i
+            begin
+              Munify.debug_str "Meta-FO" 0;
+              ise_and i
+              (* First compare extra args for better failure message *)
+                [(fun i -> ise_list2 i
                   (fun i -> evar_conv_x ts env i CONV) rest1 l2);
-               (fun i -> evar_conv_x ts env i pbty (applist(term1,deb1)) term2)]
+                 (fun i -> evar_conv_x ts env i pbty (applist(term1,deb1)) term2)]
+            end
           else (i,false)
 	and f3 i =
 	  match eval_flexible_term ts env flex1 with
 	    | Some v1 ->
-		evar_eqappr_x ts env i pbty (evar_apprec ts env i l1 v1) appr2
+              Munify.debug_str "Meta-ReduceL" 0;
+	      evar_eqappr_x ts env i pbty (evar_apprec ts env i l1 v1) appr2
 	    | None -> (i,false)
 	in
 	ise_try evd [f1; f2; f3]
@@ -313,6 +341,7 @@ and evar_eqappr_x ?(rhs_is_already_stuck = false)
         match kind_of_term flex1, kind_of_term flex2 with
         | LetIn (na,b1,t1,c'1), LetIn (_,b2,_,c'2) ->
         let f1 i =
+          Munify.debug_str "Let-Same" 0;
           ise_and i
 	    [(fun i -> evar_conv_x ts env i CONV b1 b2);
 	     (fun i ->
@@ -321,6 +350,7 @@ and evar_eqappr_x ?(rhs_is_already_stuck = false)
 	       evar_conv_x ts (push_rel (na,Some b,t) env) i pbty c'1 c'2);
 	     (fun i -> ise_list2 i (fun i -> evar_conv_x ts env i CONV) l1 l2)]
 	and f2 i =
+          Munify.debug_str "Let-Zeta" 0;
           let appr1 = evar_apprec ts env i l1 (subst1 b1 c'1)
           and appr2 = evar_apprec ts env i l2 (subst1 b2 c'2)
 	  in evar_eqappr_x ts env i pbty appr1 appr2
@@ -330,10 +360,14 @@ and evar_eqappr_x ?(rhs_is_already_stuck = false)
 	| _, _ ->
 	let f1 i =
 	  if eq_constr flex1 flex2 then
-	    ise_list2 i (fun i -> evar_conv_x ts env i CONV) l1 l2
+            begin
+              Munify.debug_str "App-FO-Same-Head" 0;
+	      ise_list2 i (fun i -> evar_conv_x ts env i CONV) l1 l2
+            end
 	  else
 	     (i,false)
 	and f2 i =
+          Munify.debug_str "Try CS" 0;
 	  (try conv_record ts env i
              (try check_conv_record appr1 appr2
 	      with Not_found -> check_conv_record appr2 appr1)
@@ -360,20 +394,24 @@ and evar_eqappr_x ?(rhs_is_already_stuck = false)
 	  if isLambda flex1 || rhs_is_already_stuck then
 	    match eval_flexible_term ts env flex1 with
 	    | Some v1 ->
+              Munify.debug_str "UnfoldL" 0;
 		evar_eqappr_x ~rhs_is_already_stuck 
                   ts env i pbty (evar_apprec ts env i l1 v1) appr2
 	    | None ->
 		match eval_flexible_term ts env flex2 with
 		| Some v2 ->
+                  Munify.debug_str "UnfoldR" 0;
 		    evar_eqappr_x ts env i pbty appr1 (evar_apprec ts env i l2 v2)
 		| None -> (i,false)
 	  else
 	    match eval_flexible_term ts env flex2 with
 	    | Some v2 ->
+              Munify.debug_str "UnfoldR" 0;
 		evar_eqappr_x ts env i pbty appr1 (evar_apprec ts env i l2 v2)
 	    | None ->
 		match eval_flexible_term ts env flex1 with
 		| Some v1 ->
+                  Munify.debug_str "UnfoldR" 0;
 		    evar_eqappr_x ts env i pbty (evar_apprec ts env i l1 v1) appr2
 		| None -> (i,false)
 	in
@@ -384,6 +422,7 @@ and evar_eqappr_x ?(rhs_is_already_stuck = false)
         let (na,c1,c'1) = destLambda c1 in
         let (_,c2,c'2) = destLambda c2 in
         assert (l1=[] & l2=[]);
+        Munify.debug_str "Same-Lambda" 0;
         ise_and evd
           [(fun i -> evar_conv_x ts env i CONV c1 c2);
            (fun i ->
@@ -397,16 +436,20 @@ and evar_eqappr_x ?(rhs_is_already_stuck = false)
 	  (* Preserve generality thanks to eta-conversion) *)
 	  let t2 = nf_evar evd (applist appr2) in
 	  let t2 = solve_pattern_eqn env l1 t2 in
+          Munify.debug_str "Meta-InstL" 0;
 	  solve_simple_eqn (evar_conv_x ts) env evd
 	    (position_problem true pbty,ev1,t2)
         | None ->
           if isLambda term2 then
             eta env evd false term2 l2 term1 l1
           else
-	  (* Postpone the use of an heuristic *)
-	  add_conv_pb (pbty,env,applist appr1,applist appr2) evd,
-	  true)
-
+            begin
+	    (* Postpone the use of an heuristic *)
+              Munify.debug_str "Postpone!" 0;
+	      add_conv_pb (pbty,env,applist appr1,applist appr2) evd,
+	      true
+            end
+        )
     | (Rigid _ | PseudoRigid _), Flexible ev2 ->
 	(match is_unification_pattern_evar env evd ev2 l2 (applist appr1) with
         | Some l2 ->
@@ -414,23 +457,30 @@ and evar_eqappr_x ?(rhs_is_already_stuck = false)
 	  (* Preserve generality thanks to eta-conversion) *)
 	  let t1 = nf_evar evd (applist appr1) in
 	  let t1 = solve_pattern_eqn env l2 t1 in
+          Munify.debug_str "Meta-InstR" 0;
 	  solve_simple_eqn (evar_conv_x ts) env evd
 	    (position_problem false pbty,ev2,t1)
         | None ->
           if isLambda term1 then
             eta env evd true term1 l1 term2 l2
           else
+            begin
 	  (* Postpone the use of an heuristic *)
-	  add_conv_pb (pbty,env,applist appr1,applist appr2) evd,
-	  true)
+              Munify.debug_str "Postpone!" 0;
+	      add_conv_pb (pbty,env,applist appr1,applist appr2) evd,
+	      true 
+            end
+        )
 
     | MaybeFlexible flex1, (Rigid _ | PseudoRigid _) ->
 	let f3 i =
+          Munify.debug_str "Try CS" 0;
 	  (try conv_record ts env i (check_conv_record appr1 appr2)
            with Not_found -> (i,false))
 	and f4 i =
 	  match eval_flexible_term ts env flex1 with
 	    | Some v1 ->
+                Munify.debug_str "UnfoldL" 0;
 		evar_eqappr_x ts env i pbty (evar_apprec ts env i l1 v1) appr2
 	    | None ->
                 if isLambda term2 then
@@ -442,11 +492,13 @@ and evar_eqappr_x ?(rhs_is_already_stuck = false)
 
     | (Rigid _ | PseudoRigid _), MaybeFlexible flex2 ->
 	let f3 i =
+          Munify.debug_str "Try CS" 0;
 	  (try conv_record ts env i (check_conv_record appr2 appr1)
            with Not_found -> (i,false))
 	and f4 i =
 	  match eval_flexible_term ts env flex2 with
 	    | Some v2 ->
+              Munify.debug_str "UnfoldR" 0;
 		evar_eqappr_x ts env i pbty appr1 (evar_apprec ts env i l2 v2)
 	    | None ->
                 if isLambda term1 then
@@ -467,6 +519,7 @@ and evar_eqappr_x ?(rhs_is_already_stuck = false)
         match kind_of_term c1, kind_of_term c2 with
 
 	| Sort s1, Sort s2 when l1=[] & l2=[] ->
+          Munify.debug_str "Sort-Same" 0;
 	    (try 
 	       let evd' = 
 		 if pbty = CONV 
@@ -477,6 +530,7 @@ and evar_eqappr_x ?(rhs_is_already_stuck = false)
 	     | e when Errors.noncritical e -> (evd, false))
 
 	| Prod (n,c1,c'1), Prod (_,c2,c'2) when l1=[] & l2=[] ->
+          Munify.debug_str "Prod-Same" 0;
             ise_and evd
               [(fun i -> evar_conv_x ts env i CONV c1 c2);
                (fun i ->
@@ -484,16 +538,19 @@ and evar_eqappr_x ?(rhs_is_already_stuck = false)
 	         evar_conv_x ts (push_rel (n,None,c) env) i pbty c'1 c'2)]
 
 	| Ind sp1, Ind sp2 ->
+          Munify.debug_str "Ind-Same" 0;
 	    if eq_ind sp1 sp2 then
               ise_list2 evd (fun i -> evar_conv_x ts env i CONV) l1 l2
             else (evd, false)
 
 	| Construct sp1, Construct sp2 ->
+          Munify.debug_str "Constr-Same" 0;
 	    if eq_constructor sp1 sp2 then
               ise_list2 evd (fun i -> evar_conv_x ts env i CONV) l1 l2
             else (evd, false)
 
 	| CoFix (i1,(_,tys1,bds1 as recdef1)), CoFix (i2,(_,tys2,bds2)) ->
+          Munify.debug_str "Cofix-Same" 0;
             if i1=i2  then
               ise_and evd
                 [(fun i -> ise_array2 i
@@ -518,6 +575,7 @@ and evar_eqappr_x ?(rhs_is_already_stuck = false)
         match kind_of_term c1, kind_of_term c2 with
 
 	| Case (_,p1,c1,cl1), Case (_,p2,c2,cl2) ->
+          Munify.debug_str "Case-Same" 0;
             ise_and evd
               [(fun i -> evar_conv_x ts env i CONV p1 p2);
                (fun i -> evar_conv_x ts env i CONV c1 c2);
@@ -526,6 +584,7 @@ and evar_eqappr_x ?(rhs_is_already_stuck = false)
                (fun i -> ise_list2 i (fun i -> evar_conv_x ts env i CONV) l1 l2)]
 
 	| Fix (li1,(_,tys1,bds1 as recdef1)), Fix (li2,(_,tys2,bds2)) ->
+          Munify.debug_str "Fix-Same" 0;
             if li1=li2 then
               ise_and evd
                 [(fun i -> ise_array2 i

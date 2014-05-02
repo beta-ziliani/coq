@@ -124,3 +124,7 @@ val unify' : ?conv_t:Evd.conv_pb -> int ->
   Evd.evar_map -> (Term.constr * Term.constr list) -> (Term.constr * Term.constr list) -> bool * Evd.evar_map
 
 val should_try_fo : Term.constr list -> (Term.constr * Term.constr list) -> bool
+
+val debug_eq : Evd.evar_map -> Environ.env -> Term.constr * Term.constr list -> Term.constr * Term.constr list  -> int -> unit
+
+val debug_str : string -> int -> unit
