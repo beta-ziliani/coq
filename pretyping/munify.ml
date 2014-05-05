@@ -111,6 +111,7 @@ let is_variable_subs = Util.array_for_all (fun c -> isVar c || isRel c)
 
 let is_variable_args = List.for_all (fun c -> isVar c || isRel c)    
 
+exception NotUnique
 let find_unique test dest id s =
   let (i, j) = List.fold_right (fun c (i, j) -> 
     if test c && dest c = id
@@ -118,7 +119,9 @@ let find_unique test dest id s =
     else (i, if i > 0 then j else j-1))
     s (0, List.length s)
   in
-  if i = 1 then Some j else None
+  if i = 1 then Some j 
+  else if i > 1 then raise NotUnique 
+  else  None
 
 let find_unique_var = find_unique isVar destVar
 
@@ -260,7 +263,7 @@ let invert map sigma ctx t subs args =
 	    | None -> raise Exit) i t)
 	with Exit -> None
   in
-  invert' false t 0 >>= fun c' ->
+  try invert' false t 0 with NotUnique -> None >>= fun c' ->
   return c'
 
 (** removes the positions in the list *)
@@ -824,7 +827,8 @@ and instantiate dbg ts conv_t env sigma
         instantiate dbg ts conv_t env sigma evsubs args t'
       end
     else err sigma
-  ) ||= (fun _ ->
+  ) ||= (fun _ -> 
+    (* if the equation is [?f =?= \x.?f x] the occurs check will fail, but there is a solution: eta expansion *)
     if isLambda h && List.length args' = 0 then
       begin
         debug_str "Lam-EtaR" dbg;
