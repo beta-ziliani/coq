@@ -771,79 +771,58 @@ and is_stuck ts env sigma (hd, args) =
   in is_unnamed (hd, args)
 
 and instantiate' dbg ts conv_t env sigma0 (ev, subs as uv) args (h, args' as t) =
-  let evi = Evd.find_undefined sigma0 ev in
-  let nc = Evd.evar_filtered_context evi in
-  let res = 
-    let t = Reductionops.whd_beta sigma0 (applist t) in (* beta-reduce to remove dependencies *)
-    let subsl = Array.to_list subs in
-    let map = ref Util.Intmap.empty in
-    invert map sigma0 nc t subsl args >>= fun t' ->
-    fill_lambdas_invert_types map env sigma0 nc t' subsl args >>= fun t' ->
-    let sigma1 = prune_all !map sigma0 in
-    let t'' = Evd.instantiate_evar nc t' subsl in
-    let ty' = Retyping.get_type_of env sigma1 t'' in
-    let ty = Evd.existential_type sigma1 uv in
-    let p = unify_constr ~conv_t:Reduction.CUMUL (dbg+1) ts env sigma1 ty' ty &&= fun sigma2 ->
-      let t' = Reductionops.nf_evar sigma2 t' in
-      if Termops.occur_meta t' || Termops.occur_evar ev t' then 
-	err sigma2
-      else
-        (* needed only if an inferred type *)
-	let t' = Termops.refresh_universes t' in
-	success (Evd.define ev t' sigma2)
-    in
-    Some p
-  in 
-  match res with
-    | Some r -> r
-    | None -> 
-        if should_try_fo args t then
-	  begin
-  	  (* Meta-FO *)
-	    debug_str "Meta-FO" dbg;
-	    meta_fo dbg ts env sigma0 (uv, args) t
-	  end
+    let evi = Evd.find_undefined sigma0 ev in
+    let nc = Evd.evar_filtered_context evi in
+    let res = 
+      let t = Reductionops.whd_beta sigma0 (applist t) in (* beta-reduce to remove dependencies *)
+      let subsl = Array.to_list subs in
+      let map = ref Util.Intmap.empty in
+      invert map sigma0 nc t subsl args >>= fun t' ->
+      fill_lambdas_invert_types map env sigma0 nc t' subsl args >>= fun t' ->
+      let sigma1 = prune_all !map sigma0 in
+      let t'' = Evd.instantiate_evar nc t' subsl in
+      let ty' = Retyping.get_type_of env sigma1 t'' in
+      let ty = Evd.existential_type sigma1 uv in
+      let p = unify_constr ~conv_t:Reduction.CUMUL (dbg+1) ts env sigma1 ty' ty &&= fun sigma2 ->
+        let t' = Reductionops.nf_evar sigma2 t' in
+        if Termops.occur_meta t' || Termops.occur_evar ev t' then 
+	  err sigma2
         else
-	  err sigma0
-
-(*
-  in
-  match res with
-  | Some r -> r (* Meta-Inst *)
-  | None -> 
-    (* Meta-Reduce: before giving up we see if we can reduce on the right *)
-    let t = applist t in
-    let t' = Reductionops.nf_betadeltaiota env sigma0 t in
-    if t <> t' then
-      begin
-        let ev = mkEvar uv in
-        let r = unify' ~conv_t ts env sigma0 ev t' in
-	Printf.println "reducing help";
-	r
-      end
-    else err sigma0
-      *)
+          (* needed only if an inferred type *)
+	  let t' = Termops.refresh_universes t' in
+	  success (Evd.define ev t' sigma2)
+      in
+      Some p
+    in
+    match res with
+      | Some r -> r
+      | None -> err sigma0
+  
 (* by invariant, we know that ev is uninstantiated *)
 and instantiate dbg ts conv_t env sigma 
     (ev, subs as evsubs) args (h, args' as t) =
   (
-    if is_variable_subs subs then
-      ( 
-        if is_variable_args args then
-          try 
-	    instantiate' dbg ts conv_t env sigma evsubs args t
-          with CannotPrune -> err sigma
-        else err sigma
-      ) ||= (fun _ ->
-        if should_try_fo args (h, args') then
-	  begin
-	  (* Meta-FO *)
-	    debug_str "Meta-FO" dbg;
-	    meta_fo dbg ts env sigma (evsubs, args) (h, args')
-	  end
-        else
-	  err sigma
-        )   
+    if should_try_fo args t then
+      begin
+        (* Meta-FO *)
+        debug_str "Meta-FO" dbg;
+        meta_fo dbg ts env sigma (evsubs, args) t
+      end
+    else
+      err sigma
+  ) ||= (fun _ ->
+    if is_variable_subs subs && is_variable_args args then
+      try instantiate' dbg ts conv_t env sigma evsubs args t
+      with CannotPrune -> err sigma
+    else err sigma
+  ) ||= (fun _ ->
+    (* Meta-Reduce: before giving up we see if we can reduce on the right *)
+    if has_definition ts env h then
+      begin
+        debug_str "Meta-Reduce" dbg;
+        let t' = evar_apprec ts env sigma (get_def_app_stack env t) in
+        instantiate dbg ts conv_t env sigma evsubs args t'
+      end
     else err sigma
   ) ||= (fun _ ->
     if isLambda h && List.length args' = 0 then
@@ -853,7 +832,7 @@ and instantiate dbg ts conv_t env sigma
       end
     else
       err sigma
-  )
+)
  
 and should_try_fo args (h, args') =
   List.length args > 0 && List.length args' >= List.length args
