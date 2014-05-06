@@ -729,17 +729,6 @@ and try_step ?(stuck=NotStucked) dbg conv_t ts env sigma0 (c, l as t) (c', l' as
 	  debug_str "Rigid-Delta-ConsR" dbg;
 	  unify' ~conv_t (dbg+1) ts env sigma0 t (evar_apprec ts env sigma0 (get_def_app_stack env t'))
 	end
-  | Const _, _ when has_definition ts env c && stuck = NotStucked ->
-      if is_stuck ts env sigma0 t then
-	try_step ~stuck:StuckedLeft dbg conv_t ts env sigma0 t t'
-      else
-        begin
-          debug_str "Rigid-Delta-ConsL" dbg;
-          unify' ~conv_t (dbg+1) ts env sigma0 (evar_apprec ts env sigma0 (get_def_app_stack env t)) t'
-	end
-  | _, Const _ when has_definition ts env c' && stuck = StuckedLeft ->
-    debug_str "Rigid-Delta-ConsR" dbg;
-    unify' ~conv_t (dbg+1) ts env sigma0 t (evar_apprec ts env sigma0 (get_def_app_stack env t'))
   | Const _, _ when has_definition ts env c && stuck = StuckedRight ->
     debug_str "Rigid-Delta-ConsL" dbg;
     unify' ~conv_t (dbg+1) ts env sigma0 (evar_apprec ts env sigma0 (get_def_app_stack env t)) t'
