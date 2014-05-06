@@ -727,18 +727,18 @@ and try_step ?(stuck=NotStucked) dbg conv_t ts env sigma0 (c, l as t) (c', l' as
       else 
 	begin
 	  debug_str "Rigid-Delta-ConsR" dbg;
-	  unify' ~conv_t (dbg+1) ts env sigma0 t (evar_apprec ts env sigma0 (get_def_app_stack env t'))
+	  unify' ~conv_t (dbg+1) ts env sigma0 t (get_def_app_stack env t')
 	end
   | Const _, _ when has_definition ts env c && stuck = StuckedRight ->
     debug_str "Rigid-Delta-ConsL" dbg;
-    unify' ~conv_t (dbg+1) ts env sigma0 (evar_apprec ts env sigma0 (get_def_app_stack env t)) t'
+    unify' ~conv_t (dbg+1) ts env sigma0 (get_def_app_stack env t) t'
 
   | _, Const _ when has_definition ts env c' ->
     debug_str "Rigid-Delta-ConsR" dbg;
-    unify' ~conv_t (dbg+1) ts env sigma0 t (evar_apprec ts env sigma0 (get_def_app_stack env t'))
+    unify' ~conv_t (dbg+1) ts env sigma0 t (get_def_app_stack env t')
   | Const _, _ when has_definition ts env c ->
     debug_str "Rigid-Delta-ConsL" dbg;
-    unify' ~conv_t (dbg+1) ts env sigma0 (evar_apprec ts env sigma0 (get_def_app_stack env t)) t'
+    unify' ~conv_t (dbg+1) ts env sigma0 (get_def_app_stack env t) t'
 
   (* Lam-EtaR *)
   | _, Lambda (name, t1, c1) when l' = [] ->
