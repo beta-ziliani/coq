@@ -522,12 +522,16 @@ and run_and_unify dbg ts env sigma0 args ty =
   | _ -> err sigma0
 
 and try_solve_simple_eqn dbg ts env sigma evsubs args t =
+  try
     let t = Evarutil.solve_pattern_eqn env args (applist t) in
     match Evarutil.solve_simple_eqn (unify_evar_conv ts) env sigma (None, evsubs, t) with
     | (_, false) -> err sigma
     | (sigma', true) -> Printf.printf "%s" "solve_simple_eqn solved it: ";
       debug_eq sigma env (mkEvar evsubs, []) (decompose_app t) dbg;
       success sigma'
+  with _ -> 
+    Printf.printf "%s" "solve_simple_eqn failed!";
+    err sigma
    
 and one_is_meta dbg ts conv_t env sigma0 (c, l as t) (c', l' as t') =
   if isEvar c && isEvar c' then
