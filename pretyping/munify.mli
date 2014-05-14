@@ -128,3 +128,6 @@ val should_try_fo : Term.constr list -> (Term.constr * Term.constr list) -> bool
 val debug_eq : Evd.evar_map -> Environ.env -> Term.constr * Term.constr list -> Term.constr * Term.constr list  -> int -> unit
 
 val debug_str : string -> int -> unit
+
+val is_stuck : Names.transparent_state -> Environ.env -> Evd.evar_map ->
+  Term.constr * Term.constr list -> bool

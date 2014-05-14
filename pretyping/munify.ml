@@ -450,7 +450,7 @@ let evar_apprec ts env sigma (c, stack) =
       | Evar (evk,_ as ev) when Evd.is_defined sigma evk ->
 	  aux (Evd.existential_value sigma ev, stack)
       | _ -> (t, Reductionops.list_of_stack stack)
-  in aux (try_unfolding ts env c, Reductionops.append_stack_list stack Reductionops.empty_stack)
+  in aux (c, Reductionops.append_stack_list stack Reductionops.empty_stack)
 
 
 (* pre: c and c' are in whdnf with our definition of whd *)
@@ -756,7 +756,7 @@ and try_step ?(stuck=NotStucked) dbg conv_t ts env sigma0 (c, l as t) (c', l' as
   | _, _ -> err sigma0
 
 and is_stuck ts env sigma (hd, args) =
-  let (hd, args) = evar_apprec ts env sigma (hd, args) in
+  let (hd, args) = evar_apprec ts env sigma (try_unfolding ts env hd, args) in
   let rec is_unnamed (hd, args) = match kind_of_term hd with
     | (Var _|Construct _|Ind _|Const _|Prod _|Sort _) -> false
     | (Case _|Fix _|CoFix _|Meta _|Rel _)-> true
