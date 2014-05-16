@@ -684,16 +684,16 @@ and try_step ?(stuck=NotStucked) dbg conv_t ts env sigma0 (c, l as t) (c', l' as
     let t1 = (subst1 trm body, l) in
     unify' ~conv_t (dbg+1) ts env sigma0 t1 t'
 
-  (* Rigid-DeltaR *)
+  (* Delta-VarR *)
   | _, Rel _ 
   | _, Var _ when has_definition ts env c' ->
-    debug_str "Rigid-Delta-VarR" dbg;
+    debug_str "Delta-VarR" dbg;
     unify' ~conv_t (dbg+1) ts env sigma0 t (get_def_app_stack env t')
 
-  (* Rigid-DeltaL *)
+  (* Delta-VarL *)
   | Rel _, _ 
   | Var _, _ when has_definition ts env c ->
-    debug_str "Rigid-Delta-VarL" dbg;
+    debug_str "Delta-VarL" dbg;
     unify' ~conv_t (dbg+1) ts env sigma0 (get_def_app_stack env t) t'
 
   | _, Case _ | _, Fix _ when stuck <> StuckedRight ->
@@ -726,11 +726,11 @@ and try_step ?(stuck=NotStucked) dbg conv_t ts env sigma0 (c, l as t) (c', l' as
 	try_step ~stuck:StuckedRight dbg conv_t ts env sigma0 t t'
       else 
 	begin
-	  debug_str "Rigid-Delta-ConsR" dbg;
+	  debug_str "Delta-ConsNotStuckR" dbg;
 	  unify' ~conv_t (dbg+1) ts env sigma0 t (get_def_app_stack env t')
 	end
   | Const _, _ when has_definition ts env c && stuck = StuckedRight ->
-    debug_str "Rigid-Delta-ConsL" dbg;
+    debug_str "Delta-ConsStuckL" dbg;
     unify' ~conv_t (dbg+1) ts env sigma0 (get_def_app_stack env t) t'
 
   | _, Const _ when has_definition ts env c' ->
