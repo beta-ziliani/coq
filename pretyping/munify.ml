@@ -560,8 +560,6 @@ and one_is_meta dbg ts conv_t env sigma0 (c, l as t) (c', l' as t') =
         run_and_unify dbg ts env sigma0 l' t
       else
 	begin
-	(* Meta-InstL *)
-	  debug_str "Meta-InstL" dbg;
 	  let e1 = destEvar c in
 	  instantiate dbg ts conv_t env sigma0 e1 l t' ||= fun _ ->
           try_solve_simple_eqn dbg ts env sigma0 e1 l t'
@@ -571,9 +569,7 @@ and one_is_meta dbg ts conv_t env sigma0 (c, l as t) (c', l' as t') =
         run_and_unify dbg ts env sigma0 l t'
       else
 	begin
-        (* Meta-InstR *)
-	  debug_str "Meta-InstR" dbg;
-	  let e2 = destEvar c' in
+          let e2 = destEvar c' in
 	  instantiate dbg ts conv_t env sigma0 e2 l' t ||= fun _ ->
           try_solve_simple_eqn dbg ts env sigma0 e2 l' t
 	end
@@ -804,8 +800,12 @@ and instantiate dbg ts conv_t env sigma
       err sigma
   ) ||= (fun _ ->
     if is_variable_subs subs && is_variable_args args then
-      try instantiate' dbg ts conv_t env sigma evsubs args t
-      with CannotPrune -> err sigma
+      begin
+        (* Meta-InstL *)
+        debug_str "Meta-Inst" dbg;
+        try instantiate' dbg ts conv_t env sigma evsubs args t
+        with CannotPrune -> err sigma
+      end
     else err sigma
   ) ||= (fun _ ->
     (* Meta-Reduce: before giving up we see if we can reduce on the right *)
