@@ -794,15 +794,6 @@ and instantiate' dbg ts conv_t env sigma0 (ev, subs as uv) args (h, args' as t) 
 and instantiate dbg ts conv_t env sigma 
     (ev, subs as evsubs) args (h, args' as t) =
   (
-    if should_try_fo args t then
-      begin
-        (* Meta-FO *)
-        debug_str "Meta-FO" dbg;
-        meta_fo dbg ts env sigma (evsubs, args) t
-      end
-    else
-      err sigma
-  ) ||= (fun _ ->
     if is_variable_subs subs && is_variable_args args then
       begin
         (* Meta-InstL *)
@@ -811,6 +802,15 @@ and instantiate dbg ts conv_t env sigma
         with CannotPrune -> err sigma
       end
     else err sigma
+  ) ||= (fun _ ->
+    if should_try_fo args t then
+      begin
+        (* Meta-FO *)
+        debug_str "Meta-FO" dbg;
+        meta_fo dbg ts env sigma (evsubs, args) t
+      end
+    else
+      err sigma
   ) ||= (fun _ ->
     (* Meta-Reduce: before giving up we see if we can reduce on the right *)
     if has_definition ts env h then
@@ -835,14 +835,13 @@ and should_try_fo args (h, args') =
   List.length args > 0 && List.length args' >= List.length args
 
 (* ?e a1 a2 = h b1 b2 b3 ---> ?e = h b1 /\ a1 = b2 /\ a2 = b3 *)
-(* |arr'| - |arr| = 1 *)
 and meta_fo dbg ts env sigma (evsubs, args) (h, args') =
-  let arr = Array.of_list args in   
-  let arr' = Array.of_list args' in 
-  let n = Array.length arr' - Array.length arr in
-  unify_constr (dbg+1) ts env sigma (mkEvar evsubs) (mkApp (h, (Array.sub arr' 0 n)))
-  &&= fun sigma' ->
-  ise_array2 sigma' (unify_constr (dbg+1) ts env) arr (Array.sub arr' n (Array.length arr' - n))
+  let rargs = List.rev args in
+  let rargs' = List.rev args' in
+  let le, args = List.hd rargs, List.rev (List.tl rargs) in
+  let le', args' = List.hd rargs', List.rev (List.tl rargs') in
+  unify_constr (dbg+1) ts env sigma le le' &&= fun sigma' ->
+  unify' (dbg+1) ts env sigma' (mkEvar evsubs, args) (h, args')
 
 
 (* unifies ty with a product type from {name : a} to some Type *)
