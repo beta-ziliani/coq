@@ -762,7 +762,19 @@ and is_stuck ts env sigma (hd, args) =
     | App _| Cast _ -> assert false
   in is_unnamed (hd, args)
 
+and remove_equal_tail args args' =
+  let rargs = List.rev args in
+  let rargs' = List.rev args' in
+  let rec remove rargs rargs' =
+    match rargs, rargs' with
+      | (x :: xs), (y :: ys) when eq_constr x y -> remove xs ys
+      | _, _ -> rargs, rargs'
+  in 
+  let (xs, ys) = remove rargs rargs' in
+  (List.rev xs, List.rev ys)
+
 and instantiate' dbg ts conv_t env sigma0 (ev, subs as uv) args (h, args' as t) =
+  let args, args' = remove_equal_tail args args' in
     let evi = Evd.find_undefined sigma0 ev in
     let nc = Evd.evar_filtered_context evi in
     let res = 
