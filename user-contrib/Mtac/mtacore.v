@@ -228,6 +228,7 @@ Definition MFixException (s : string) : Exception.
   exact exception.
 Qed.
 
+Program
 Definition mk_rec (Ty : Prop) (b : Ty) : M dynamic :=
   mmatch Ty as Ty' return M _ with
   | [A B] (forall x:A, M (B x)) -> forall x:A, M (B x) =c> [H]
@@ -245,7 +246,6 @@ Definition mk_rec (Ty : Prop) (b : Ty) : M dynamic :=
     retS (Build_dynamic _ (tfix5 B (eq_ind _ id b _ H)))
   | _ => raise (MFixException "Cannot typecheck the fixpoint. Perhaps you provided more than 5 arguments? If not, you can try providing the type to the fixpoint.")
   end.
-
 
 Notation "'mfix1' f ( x : A ) : 'M' T := b" := (tfix1 (fun x=>T) (fun f (x : A)=>b))
   (at level 85, f at level 0, x at next level, format
