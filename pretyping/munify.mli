@@ -57,6 +57,8 @@ val fill_lambdas_invert_types :
 
 type stucked = NotStucked | StuckedLeft | StuckedRight
 
+type direction = Original | Swap
+
 val try_step :
            ?stuck:stucked ->
            int ->
@@ -76,7 +78,9 @@ val instantiate' : int ->
   Term.types list ->
   Term.constr * Term.types list -> bool * Evd.evar_map
 
-val instantiate : int ->
+val instantiate : 
+  ?dir:direction ->
+  int ->
   Names.transparent_state ->
   Evd.conv_pb ->
   Environ.env ->
@@ -85,7 +89,9 @@ val instantiate : int ->
   Term.types list ->
   Term.constr * Term.types list -> bool * Evd.evar_map
 
-val meta_fo : int ->
+val meta_fo : 
+  direction ->
+  int ->
   Names.transparent_state ->
   Environ.env ->
   Evd.evar_map ->

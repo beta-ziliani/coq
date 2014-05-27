@@ -442,6 +442,7 @@ let debug_eq sigma env c1 c2 l =
     ()
   
 type stucked = NotStucked | StuckedLeft | StuckedRight
+type direction = Original | Swap
 
 let evar_apprec ts env sigma (c, stack) =
   let rec aux s =
@@ -461,6 +462,10 @@ let rec unify' ?(conv_t=Reduction.CONV) dbg ts env sigma0 (c, l) (c', l') =
   let t, t' = (c, l), (c', l') in
   debug_eq sigma0 env t t' dbg;
   let res =
+    if Evarutil.is_ground_term sigma0 (applist t) && Evarutil.is_ground_term sigma0 (applist t') 
+      && Reductionops.is_trans_fconv conv_t ts env sigma0 (applist t) (applist t') 
+    then begin debug_str "Reduce-Same" dbg; success sigma0 end
+    else begin
   match (kind_of_term c, kind_of_term c') with
   | Evar _, _ 
   | _, Evar _ ->
@@ -503,7 +508,8 @@ let rec unify' ?(conv_t=Reduction.CONV) dbg ts env sigma0 (c, l) (c', l') =
     ) ||= fun _ ->
     (
       try_step dbg conv_t ts env sigma0 t t'
-    )
+    ) 
+    end
   in
   if is_success res then 
     debug_str "ok" dbg
@@ -550,9 +556,9 @@ and one_is_meta dbg ts conv_t env sigma0 (c, l as t) (c', l' as t') =
         (
 	if k1 > k2 then
 	  instantiate dbg ts conv_t env sigma0 e1 l t' ||= fun _ ->
-	  instantiate dbg ts conv_t env sigma0 e2 l' t
+	  instantiate ~dir:Swap dbg ts conv_t env sigma0 e2 l' t
 	else
-	  instantiate dbg ts conv_t env sigma0 e2 l' t ||= fun _ ->
+	  instantiate ~dir:Swap dbg ts conv_t env sigma0 e2 l' t ||= fun _ ->
 	  instantiate dbg ts conv_t env sigma0 e1 l t'
         ) ||= fun _ ->
           try_solve_simple_eqn dbg ts env sigma0 e1 l t' ||= fun _ ->
@@ -574,7 +580,7 @@ and one_is_meta dbg ts conv_t env sigma0 (c, l as t) (c', l' as t') =
       else
 	begin
           let e2 = destEvar c' in
-	  instantiate dbg ts conv_t env sigma0 e2 l' t ||= fun _ ->
+	  instantiate ~dir:Swap dbg ts conv_t env sigma0 e2 l' t ||= fun _ ->
           try_solve_simple_eqn dbg ts env sigma0 e2 l' t
 	end
 
@@ -669,7 +675,7 @@ and try_step ?(stuck=NotStucked) dbg conv_t ts env sigma0 (c, l as t) (c', l' as
     unify' ~conv_t (dbg+1) ts env sigma0 t t2 
   (* Lam-BetaL *)
   | Lambda (_, _, trm), _ when l <> [] ->
-    debug_str "Lame-BetaL" dbg;
+    debug_str "Lam-BetaL" dbg;
     let t1 = (subst1 (List.hd l) trm, List.tl l) in
     unify' ~conv_t (dbg+1) ts env sigma0 t1 t'
 
@@ -767,18 +773,24 @@ and remove_equal_tail args args' =
   let rargs' = List.rev args' in
   let rec remove rargs rargs' =
     match rargs, rargs' with
-      | (x :: xs), (y :: ys) when eq_constr x y -> remove xs ys
+      | (x :: xs), (y :: ys) -> 
+	if eq_constr x y && not (List.exists (eq_constr x) ys) 
+	  && not (List.exists (eq_constr x) xs) then
+	  remove xs ys
+	else
+	  rargs, rargs'
       | _, _ -> rargs, rargs'
   in 
   let (xs, ys) = remove rargs rargs' in
   (List.rev xs, List.rev ys)
 
-and instantiate' dbg ts conv_t env sigma0 (ev, subs as uv) args (h, args' as t) =
+and instantiate' dbg ts conv_t env sigma0 (ev, subs as uv) args (h, args') =
   let args, args' = remove_equal_tail args args' in
+  (* beta-reduce to remove dependencies *)
+  let t = Reductionops.whd_beta sigma0 (applist (h, args')) in 
     let evi = Evd.find_undefined sigma0 ev in
     let nc = Evd.evar_filtered_context evi in
     let res = 
-      let t = Reductionops.whd_beta sigma0 (applist t) in (* beta-reduce to remove dependencies *)
       let subsl = Array.to_list subs in
       let map = ref Util.Intmap.empty in
       invert map sigma0 nc t subsl args >>= fun t' ->
@@ -803,7 +815,7 @@ and instantiate' dbg ts conv_t env sigma0 (ev, subs as uv) args (h, args' as t) 
       | None -> err sigma0
   
 (* by invariant, we know that ev is uninstantiated *)
-and instantiate dbg ts conv_t env sigma 
+and instantiate ?(dir=Original) dbg ts conv_t env sigma 
     (ev, subs as evsubs) args (h, args' as t) =
   (
     if is_variable_subs subs && is_variable_args args then
@@ -819,7 +831,7 @@ and instantiate dbg ts conv_t env sigma
       begin
         (* Meta-FO *)
         debug_str "Meta-FO" dbg;
-        meta_fo dbg ts env sigma (evsubs, args) t
+        meta_fo dir dbg ts env sigma (evsubs, args) t
       end
     else
       err sigma
@@ -847,14 +859,17 @@ and should_try_fo args (h, args') =
   List.length args > 0 && List.length args' >= List.length args
 
 (* ?e a1 a2 = h b1 b2 b3 ---> ?e = h b1 /\ a1 = b2 /\ a2 = b3 *)
-and meta_fo dbg ts env sigma (evsubs, args) (h, args') =
+and meta_fo dir dbg ts env sigma (evsubs, args) (h, args') =
   let rargs = List.rev args in
   let rargs' = List.rev args' in
   let le, args = List.hd rargs, List.rev (List.tl rargs) in
   let le', args' = List.hd rargs', List.rev (List.tl rargs') in
-  unify_constr (dbg+1) ts env sigma le le' &&= fun sigma' ->
-  unify' (dbg+1) ts env sigma' (mkEvar evsubs, args) (h, args')
-
+  if dir = Original then 
+    unify_constr (dbg+1) ts env sigma le le' &&= fun sigma' ->
+    unify' (dbg+1) ts env sigma' (mkEvar evsubs, args) (h, args')
+  else
+    unify_constr (dbg+1) ts env sigma le' le &&= fun sigma' ->
+    unify' (dbg+1) ts env sigma' (h, args') (mkEvar evsubs, args)
 
 (* unifies ty with a product type from {name : a} to some Type *)
 and check_product dbg ts env sigma ty (name, a) =
