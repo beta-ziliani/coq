@@ -429,17 +429,12 @@ let debug_str s l =
     ()
 
 let debug_eq sigma env c1 c2 l = 
-  if !debug then 
-    begin
-      print_bar l;
-      pad l;
-      Pp.msg (Termops.print_constr_env env (Evarutil.nf_evar sigma (applist c1)));
-      Printf.printf "%s" " =?= ";
-      Pp.msg (Termops.print_constr_env env (Evarutil.nf_evar sigma (applist c2)));
-      Printf.printf "\n" 
-    end
-  else
-    ()
+  print_bar l;
+  pad l;
+  Pp.msg (Termops.print_constr_env env (Evarutil.nf_evar sigma (applist c1)));
+  Printf.printf "%s" " =?= ";
+  Pp.msg (Termops.print_constr_env env (Evarutil.nf_evar sigma (applist c2)));
+  Printf.printf "\n" 
   
 type stucked = NotStucked | StuckedLeft | StuckedRight
 type direction = Original | Swap
@@ -460,7 +455,7 @@ let rec unify' ?(conv_t=Reduction.CONV) dbg ts env sigma0 (c, l) (c', l') =
   let (c', l2) = decompose_app (Evarutil.whd_head_evar sigma0 c') in
   let l, l' = l1 @ l, l2 @ l' in
   let t, t' = (c, l), (c', l') in
-  debug_eq sigma0 env t t' dbg;
+  if !debug then debug_eq sigma0 env t t' dbg else ();
   let res =
     if Evarutil.is_ground_term sigma0 (applist t) && Evarutil.is_ground_term sigma0 (applist t') 
       && Reductionops.is_trans_fconv conv_t ts env sigma0 (applist t) (applist t') 
@@ -768,24 +763,48 @@ and is_stuck ts env sigma (hd, args) =
     | App _| Cast _ -> assert false
   in is_unnamed (hd, args)
 
-and remove_equal_tail args args' =
-  let rargs = List.rev args in
-  let rargs' = List.rev args' in
-  let rec remove rargs rargs' =
-    match rargs, rargs' with
-      | (x :: xs), (y :: ys) -> 
-	if eq_constr x y && not (List.exists (eq_constr x) ys) 
-	  && not (List.exists (eq_constr x) xs) then
-	  remove xs ys
+and remove_etas nargs t = 
+  let rec find_index_from max j current a = 
+    if j > max then
+      None
+    else if j = max then
+      Some current
+    else if current = 0 then
+      None
+    else
+      let last = a.(current -1) in
+      if isRel last && destRel last = j + 1 then
+	find_index_from max (j+1) (current -1) a
+      else
+	None
+  in
+  let rec remove i abs c =
+    match kind_of_term c with
+      | Lambda (n, t, b) -> remove (i+1) ((n, t) :: abs) b
+      | App (h, a) ->
+	let last = a.(Array.length a -1) in
+	if isRel last && destRel last <= i then
+	  begin
+	  let j = find_index_from i (destRel last) (Array.length a -1) a in
+	  match j with
+	    | None -> t
+	    | Some j ->
+	      (* from j to |a|-1 we have a decreasing list of rels, starting from i *)
+	      let to_remove = min (Array.length a - j) nargs in
+	      let without_lasts = mkApp (h, Array.sub a 0 (Array.length a - to_remove)) in
+	      if Term.noccur_between (i - to_remove + 1) i without_lasts then
+		let abs = Util.list_skipn to_remove (List.rev abs) in
+		List.fold_right (fun (n, t) c -> mkLambda (n, t, c))  abs
+		  (Term.lift (-to_remove) without_lasts)
+	      else
+		t
+	  end
 	else
-	  rargs, rargs'
-      | _, _ -> rargs, rargs'
-  in 
-  let (xs, ys) = remove rargs rargs' in
-  (List.rev xs, List.rev ys)
-
+	  t
+      | _ -> t
+  in remove 0 [] t
+    
 and instantiate' dbg ts conv_t env sigma0 (ev, subs as uv) args (h, args') =
-  let args, args' = remove_equal_tail args args' in
   (* beta-reduce to remove dependencies *)
   let t = Reductionops.whd_beta sigma0 (applist (h, args')) in 
     let evi = Evd.find_undefined sigma0 ev in
@@ -804,6 +823,7 @@ and instantiate' dbg ts conv_t env sigma0 (ev, subs as uv) args (h, args') =
         if Termops.occur_meta t' || Termops.occur_evar ev t' then 
 	  err sigma2
         else
+	  let t' = remove_etas (List.length args) t' in
           (* needed only if an inferred type *)
 	  let t' = Termops.refresh_universes t' in
 	  success (Evd.define ev t' sigma2)
