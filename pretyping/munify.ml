@@ -218,6 +218,7 @@ let (-.) n m =
 let invert map sigma ctx t subs args = 
   let sargs = subs @ args in
   let in_subs j = j < List.length ctx in
+  let rmap = ref map in
   let rec invert' inside_evar t i =
     let t = Evarutil.whd_head_evar sigma t in
     match kind_of_term t with
@@ -244,10 +245,11 @@ let invert map sigma ctx t subs args =
               | _ -> 
 		if (not inside_evar) && (isVar c || isRel c) then
 		  begin
-		    (if not (Util.Intmap.mem ev !map) then
-			map := Util.Intmap.add ev [j] !map
+		    (if not (Util.Intmap.mem ev !rmap) then
+			rmap := Util.Intmap.add ev [j] !rmap
 		     else
-			map := Util.Intmap.add ev (j :: Util.Intmap.find ev !map) !map)
+                        let ls = Util.Intmap.find ev !rmap in
+			rmap := Util.Intmap.add ev (j :: ls) !rmap)
                     ; c
 		  end
 		else
@@ -263,8 +265,8 @@ let invert map sigma ctx t subs args =
 	    | None -> raise Exit) i t)
 	with Exit -> None
   in
-  try invert' false t 0 with NotUnique -> None >>= fun c' ->
-  return c'
+  (try invert' false t 0 with NotUnique -> None) >>= fun c' ->
+  return (!rmap, c')
 
 (** removes the positions in the list *)
 let remove l pos =
@@ -292,12 +294,18 @@ exception CannotPrune
     it creates a new evar ?ev' with a shorter context env' such that
     ?ev := ?ev'[id_env']. If the prunning is unsuccessful, it throws
     the exception CannotPrune. *)
-let prune evd (ev, plist) =
+let rec prune evd (ev, plist) =
   let evi = Evd.find_undefined evd ev in
-  let env = Evd.evar_filtered_context evi in
+  let env = Evd.evar_context evi in
   let env' = remove env plist in
   let env_val' = (List.fold_right Environ.push_named_context_val env' 
                     Environ.empty_named_context_val) in
+  (* the type of the evar may contain an evar depending on the some of
+     the vars that we want to prune, so we need to prune that
+     aswell *)
+  let concl = Reductionops.nf_evar evd (Evd.evar_concl evi) in
+  let evs_from_type = Evd.collect_evars concl in
+  let evd = Evd.ExistentialSet.fold (fun et evd' -> prune evd' (et, plist)) evs_from_type evd in
   let concl = Reductionops.nf_evar evd (Evd.evar_concl evi) in
   if free_vars_in concl (Termops.ids_of_named_context env') then
     let evd', ev' = Evarutil.new_evar_instance env_val' evd 
@@ -346,12 +354,14 @@ let unify_same env sigma ev subs1 subs2 =
    fun xn : An^-1 => body].
 *)
 let fill_lambdas_invert_types map env sigma nc body subst args =
+  let rmap = ref map in
   List.fold_right (fun arg r-> r >>= fun (ars, bdy) ->
     let ty = Retyping.get_type_of env sigma arg in
     let ars = Util.list_drop_last ars in
-    invert map sigma nc ty subst ars >>= fun ty ->
+    invert map sigma nc ty subst ars >>= fun (m, ty) ->
+    rmap := m;
     return (ars, mkLambda (Names.Anonymous, ty, bdy))) args (return (args, body)) 
-  >>= fun (_, bdy) -> return bdy
+  >>= fun (_, bdy) -> return (!rmap, bdy)
 
 (* [check_conv_record (t1,l1) (t2,l2)] tries to decompose the problem
    (t1 l1) = (t2 l2) into a problem
@@ -551,13 +561,15 @@ and one_is_meta dbg ts conv_t env sigma0 (c, l as t) (c', l' as t') =
         (
 	if k1 > k2 then
 	  instantiate dbg ts conv_t env sigma0 e1 l t' ||= fun _ ->
-	  instantiate ~dir:Swap dbg ts conv_t env sigma0 e2 l' t
+	  instantiate ~dir:Swap dbg ts conv_t env sigma0 e2 l' t ||= fun _ ->
+          try_solve_simple_eqn dbg ts env sigma0 e1 l t'
 	else
 	  instantiate ~dir:Swap dbg ts conv_t env sigma0 e2 l' t ||= fun _ ->
-	  instantiate dbg ts conv_t env sigma0 e1 l t'
-        ) ||= fun _ ->
-          try_solve_simple_eqn dbg ts env sigma0 e1 l t' ||= fun _ ->
+	  instantiate dbg ts conv_t env sigma0 e1 l t' ||= fun _ ->
           try_solve_simple_eqn dbg ts env sigma0 e2 l' t
+        ) (* ||= fun _ ->
+          try_solve_simple_eqn dbg ts env sigma0 e1 l t' ||= fun _ ->
+          try_solve_simple_eqn dbg ts env sigma0 e2 l' t *)
       end
   else
     if isEvar c then
@@ -811,10 +823,9 @@ and instantiate' dbg ts conv_t env sigma0 (ev, subs as uv) args (h, args') =
     let nc = Evd.evar_filtered_context evi in
     let res = 
       let subsl = Array.to_list subs in
-      let map = ref Util.Intmap.empty in
-      invert map sigma0 nc t subsl args >>= fun t' ->
-      fill_lambdas_invert_types map env sigma0 nc t' subsl args >>= fun t' ->
-      let sigma1 = prune_all !map sigma0 in
+      invert Util.Intmap.empty sigma0 nc t subsl args >>= fun (map, t') ->
+      fill_lambdas_invert_types map env sigma0 nc t' subsl args >>= fun (map, t') ->
+      let sigma1 = prune_all map sigma0 in
       let t'' = Evd.instantiate_evar nc t' subsl in
       let ty' = Retyping.get_type_of env sigma1 t'' in
       let ty = Evd.existential_type sigma1 uv in

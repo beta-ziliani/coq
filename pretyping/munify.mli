@@ -41,19 +41,20 @@ val intersect :
   Term.constr array -> Term.constr array -> int list option
 
 val invert :
-  int list Util.Intmap.t ref ->
+  int list Util.Intmap.t ->
   Evd.evar_map ->
   (Names.identifier * 'a * 'b) list ->
   Term.constr ->
-  Term.types list -> Term.types list -> Term.constr option
+  Term.types list ->
+  Term.types list -> (int list Util.Intmap.t * Term.constr) option
 
 val fill_lambdas_invert_types :
-  int list Util.Intmap.t ref ->
+  int list Util.Intmap.t ->
   Environ.env ->
   Evd.evar_map ->
   (Names.identifier * 'a * 'b) list ->
   Term.constr ->
-  Term.types list -> Term.types list -> Term.constr option
+  Term.types list -> Term.types list -> (int list Util.Intmap.t * Term.constr) option
 
 type stucked = NotStucked | StuckedLeft | StuckedRight
 
@@ -139,3 +140,7 @@ val is_stuck : Names.transparent_state -> Environ.env -> Evd.evar_map ->
   Term.constr * Term.constr list -> bool
 
 val remove_etas : int -> Term.constr -> Term.constr
+
+val prune : Evd.evar_map -> Evd.evar * int list -> Evd.evar_map
+
+val free_vars_in : Term.constr -> Names.Idset.elt list -> bool
