@@ -422,7 +422,7 @@ let has_undefined evd =
 let evars_reset_evd ?(with_conv_pbs=false) evd d = 
   {d with evars = evd.evars; 
      conv_pbs = if with_conv_pbs then evd.conv_pbs else d.conv_pbs }
-let add_conv_pb pb d = {d with conv_pbs = pb::d.conv_pbs}
+let add_conv_pb pb d = Printf.printf "POSTPONE!"; {d with conv_pbs = pb::d.conv_pbs}
 let evar_source evk d = (EvarMap.find d.evars evk).evar_source
 
 (* define the existential of section path sp as the constr body *)

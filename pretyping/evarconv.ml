@@ -177,7 +177,7 @@ let rec evar_conv_x ts env evd pbty term1 term2 =
     if is_ground_term evd term1 && is_ground_term evd term2 then
       if is_trans_fconv pbty ts env evd term1 term2 then
         begin
-          Munify.debug_eq evd env (decompose_app term1) (decompose_app term2) 0;
+          if Munify.get_debug () then Munify.debug_eq evd env (decompose_app term1) (decompose_app term2) 0 else ();
           Munify.debug_str "Reduce-Same" 0;
           Some true
         end
@@ -193,14 +193,14 @@ let rec evar_conv_x ts env evd pbty term1 term2 =
         let term2 = apprec_nohdbeta ts env evd term2 in
         if is_undefined_evar evd term1 then
           begin
-            Munify.debug_eq evd env (decompose_app term1) (decompose_app term2) 0;
+            if Munify.get_debug () then Munify.debug_eq evd env (decompose_app term1) (decompose_app term2) 0 else ();
             Munify.debug_str "Meta-InstL" 0;
             solve_simple_eqn (evar_conv_x ts) env evd
 	      (position_problem true pbty,destEvar term1,term2)
           end
         else if is_undefined_evar evd term2 then
           begin
-            Munify.debug_eq evd env (decompose_app term1) (decompose_app term2) 0;
+            if Munify.get_debug () then Munify.debug_eq evd env (decompose_app term1) (decompose_app term2) 0 else ();
             Munify.debug_str "Meta-InstR" 0;
             solve_simple_eqn (evar_conv_x ts) env evd
 	      (position_problem false pbty,destEvar term2,term1)
@@ -227,7 +227,7 @@ and evar_eqappr_x ?(rhs_is_already_stuck = false)
       else evar_eqappr_x ts env' evd CONV appr2 appr1
     end
   in
-  Munify.debug_eq evd env appr1 appr2 0;
+  if Munify.get_debug () then Munify.debug_eq evd env appr1 appr2 0 else ();
 
   (* Evar must be undefined since we have flushed evars *)
   match (flex_kind_of_term term1 l1, flex_kind_of_term term2 l2) with
@@ -952,11 +952,24 @@ let consider_remaining_unif_problems ?(ts=full_transparent_state) env evd =
 
 (* Main entry points *)
 
-let evar_conv_munify ts =
+let evar_conv_munify ts env evd conv c1 c2 =
+  let res = 
   if Munify.use_munify () then
-    Munify.unify_evar_conv ts
+    Munify.unify_evar_conv ts env evd conv c1 c2
   else
-    evar_conv_x ts
+    evar_conv_x ts env evd conv c1 c2
+  in
+(*
+  Pp.msg (Termops.print_constr_env env (Evarutil.nf_evar evd c1));
+  Printf.printf "%s" " =?= ";
+  Pp.msg (Termops.print_constr_env env (Evarutil.nf_evar evd c2));
+  let _ = match res with
+    | (_, true) -> Printf.printf " yes\n"
+    | (_, false) -> Printf.printf " no\n"
+  in
+*)
+  res
+
 
 let the_conv_x ?(eta=true) ?(ts=full_transparent_state) env t1 t2 evd =
   use_eta := eta;
