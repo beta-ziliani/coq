@@ -429,19 +429,15 @@ let debug_str s l =
     ()
 
 let debug_eq sigma env c1 c2 l = 
-  if !debug then 
-    begin
-      print_bar l;
-      pad l;
-      Pp.msg (Termops.print_constr_env env (Evarutil.nf_evar sigma (applist c1)));
-      Printf.printf "%s" " =?= ";
-      Pp.msg (Termops.print_constr_env env (Evarutil.nf_evar sigma (applist c2)));
-      Printf.printf "\n" 
-    end
-  else
-    ()
+  print_bar l;
+  pad l;
+  Pp.msg (Termops.print_constr_env env (Evarutil.nf_evar sigma (applist c1)));
+  Printf.printf "%s" " =?= ";
+  Pp.msg (Termops.print_constr_env env (Evarutil.nf_evar sigma (applist c2)));
+  Printf.printf "\n" 
   
 type stucked = NotStucked | StuckedLeft | StuckedRight
+type direction = Original | Swap
 
 let evar_apprec ts env sigma (c, stack) =
   let rec aux s =
@@ -459,8 +455,12 @@ let rec unify' ?(conv_t=Reduction.CONV) dbg ts env sigma0 (c, l) (c', l') =
   let (c', l2) = decompose_app (Evarutil.whd_head_evar sigma0 c') in
   let l, l' = l1 @ l, l2 @ l' in
   let t, t' = (c, l), (c', l') in
-  debug_eq sigma0 env t t' dbg;
+  if !debug then debug_eq sigma0 env t t' dbg else ();
   let res =
+    if Evarutil.is_ground_term sigma0 (applist t) && Evarutil.is_ground_term sigma0 (applist t') 
+      && Reductionops.is_trans_fconv conv_t ts env sigma0 (applist t) (applist t') 
+    then begin debug_str "Reduce-Same" dbg; success sigma0 end
+    else begin
   match (kind_of_term c, kind_of_term c') with
   | Evar _, _ 
   | _, Evar _ ->
@@ -503,7 +503,8 @@ let rec unify' ?(conv_t=Reduction.CONV) dbg ts env sigma0 (c, l) (c', l') =
     ) ||= fun _ ->
     (
       try_step dbg conv_t ts env sigma0 t t'
-    )
+    ) 
+    end
   in
   if is_success res then 
     debug_str "ok" dbg
@@ -550,9 +551,9 @@ and one_is_meta dbg ts conv_t env sigma0 (c, l as t) (c', l' as t') =
         (
 	if k1 > k2 then
 	  instantiate dbg ts conv_t env sigma0 e1 l t' ||= fun _ ->
-	  instantiate dbg ts conv_t env sigma0 e2 l' t
+	  instantiate ~dir:Swap dbg ts conv_t env sigma0 e2 l' t
 	else
-	  instantiate dbg ts conv_t env sigma0 e2 l' t ||= fun _ ->
+	  instantiate ~dir:Swap dbg ts conv_t env sigma0 e2 l' t ||= fun _ ->
 	  instantiate dbg ts conv_t env sigma0 e1 l t'
         ) ||= fun _ ->
           try_solve_simple_eqn dbg ts env sigma0 e1 l t' ||= fun _ ->
@@ -574,7 +575,7 @@ and one_is_meta dbg ts conv_t env sigma0 (c, l as t) (c', l' as t') =
       else
 	begin
           let e2 = destEvar c' in
-	  instantiate dbg ts conv_t env sigma0 e2 l' t ||= fun _ ->
+	  instantiate ~dir:Swap dbg ts conv_t env sigma0 e2 l' t ||= fun _ ->
           try_solve_simple_eqn dbg ts env sigma0 e2 l' t
 	end
 
@@ -669,7 +670,7 @@ and try_step ?(stuck=NotStucked) dbg conv_t ts env sigma0 (c, l as t) (c', l' as
     unify' ~conv_t (dbg+1) ts env sigma0 t t2 
   (* Lam-BetaL *)
   | Lambda (_, _, trm), _ when l <> [] ->
-    debug_str "Lame-BetaL" dbg;
+    debug_str "Lam-BetaL" dbg;
     let t1 = (subst1 (List.hd l) trm, List.tl l) in
     unify' ~conv_t (dbg+1) ts env sigma0 t1 t'
 
@@ -762,23 +763,53 @@ and is_stuck ts env sigma (hd, args) =
     | App _| Cast _ -> assert false
   in is_unnamed (hd, args)
 
-and remove_equal_tail args args' =
-  let rargs = List.rev args in
-  let rargs' = List.rev args' in
-  let rec remove rargs rargs' =
-    match rargs, rargs' with
-      | (x :: xs), (y :: ys) when eq_constr x y -> remove xs ys
-      | _, _ -> rargs, rargs'
-  in 
-  let (xs, ys) = remove rargs rargs' in
-  (List.rev xs, List.rev ys)
-
-and instantiate' dbg ts conv_t env sigma0 (ev, subs as uv) args (h, args' as t) =
-  let args, args' = remove_equal_tail args args' in
+and remove_etas nargs t = 
+  let rec find_index_from max j current a = 
+    if j > max then
+      None
+    else if j = max then
+      Some current
+    else if current = 0 then
+      None
+    else
+      let last = a.(current -1) in
+      if isRel last && destRel last = j + 1 then
+	find_index_from max (j+1) (current -1) a
+      else
+	None
+  in
+  let rec remove i abs c =
+    match kind_of_term c with
+      | Lambda (n, t, b) -> remove (i+1) ((n, t) :: abs) b
+      | App (h, a) ->
+	let last = a.(Array.length a -1) in
+	if isRel last && destRel last <= i then
+	  begin
+	  let j = find_index_from i (destRel last) (Array.length a -1) a in
+	  match j with
+	    | None -> t
+	    | Some j ->
+	      (* from j to |a|-1 we have a decreasing list of rels, starting from i *)
+	      let to_remove = min (Array.length a - j) nargs in
+	      let without_lasts = mkApp (h, Array.sub a 0 (Array.length a - to_remove)) in
+	      if Term.noccur_between (i - to_remove + 1) i without_lasts then
+		let abs = Util.list_skipn to_remove (List.rev abs) in
+		List.fold_right (fun (n, t) c -> mkLambda (n, t, c))  abs
+		  (Term.lift (-to_remove) without_lasts)
+	      else
+		t
+	  end
+	else
+	  t
+      | _ -> t
+  in remove 0 [] t
+    
+and instantiate' dbg ts conv_t env sigma0 (ev, subs as uv) args (h, args') =
+  (* beta-reduce to remove dependencies *)
+  let t = Reductionops.whd_beta sigma0 (applist (h, args')) in 
     let evi = Evd.find_undefined sigma0 ev in
     let nc = Evd.evar_filtered_context evi in
     let res = 
-      let t = Reductionops.whd_beta sigma0 (applist t) in (* beta-reduce to remove dependencies *)
       let subsl = Array.to_list subs in
       let map = ref Util.Intmap.empty in
       invert map sigma0 nc t subsl args >>= fun t' ->
@@ -792,6 +823,7 @@ and instantiate' dbg ts conv_t env sigma0 (ev, subs as uv) args (h, args' as t) 
         if Termops.occur_meta t' || Termops.occur_evar ev t' then 
 	  err sigma2
         else
+	  let t' = remove_etas (List.length args) t' in
           (* needed only if an inferred type *)
 	  let t' = Termops.refresh_universes t' in
 	  success (Evd.define ev t' sigma2)
@@ -803,7 +835,7 @@ and instantiate' dbg ts conv_t env sigma0 (ev, subs as uv) args (h, args' as t) 
       | None -> err sigma0
   
 (* by invariant, we know that ev is uninstantiated *)
-and instantiate dbg ts conv_t env sigma 
+and instantiate ?(dir=Original) dbg ts conv_t env sigma 
     (ev, subs as evsubs) args (h, args' as t) =
   (
     if is_variable_subs subs && is_variable_args args then
@@ -819,7 +851,7 @@ and instantiate dbg ts conv_t env sigma
       begin
         (* Meta-FO *)
         debug_str "Meta-FO" dbg;
-        meta_fo dbg ts env sigma (evsubs, args) t
+        meta_fo dir dbg ts env sigma (evsubs, args) t
       end
     else
       err sigma
@@ -847,14 +879,17 @@ and should_try_fo args (h, args') =
   List.length args > 0 && List.length args' >= List.length args
 
 (* ?e a1 a2 = h b1 b2 b3 ---> ?e = h b1 /\ a1 = b2 /\ a2 = b3 *)
-and meta_fo dbg ts env sigma (evsubs, args) (h, args') =
+and meta_fo dir dbg ts env sigma (evsubs, args) (h, args') =
   let rargs = List.rev args in
   let rargs' = List.rev args' in
   let le, args = List.hd rargs, List.rev (List.tl rargs) in
   let le', args' = List.hd rargs', List.rev (List.tl rargs') in
-  unify_constr (dbg+1) ts env sigma le le' &&= fun sigma' ->
-  unify' (dbg+1) ts env sigma' (mkEvar evsubs, args) (h, args')
-
+  if dir = Original then 
+    unify_constr (dbg+1) ts env sigma le le' &&= fun sigma' ->
+    unify' (dbg+1) ts env sigma' (mkEvar evsubs, args) (h, args')
+  else
+    unify_constr (dbg+1) ts env sigma le' le &&= fun sigma' ->
+    unify' (dbg+1) ts env sigma' (h, args') (mkEvar evsubs, args)
 
 (* unifies ty with a product type from {name : a} to some Type *)
 and check_product dbg ts env sigma ty (name, a) =
