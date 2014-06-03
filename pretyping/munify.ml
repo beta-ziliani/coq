@@ -304,16 +304,17 @@ let rec prune evd (ev, plist) =
      the vars that we want to prune, so we need to prune that
      aswell *)
   let concl = Reductionops.nf_evar evd (Evd.evar_concl evi) in
-  let evs_from_type = Evd.collect_evars concl in
-  let evd = Evd.ExistentialSet.fold (fun et evd' -> prune evd' (et, plist)) evs_from_type evd in
-  let concl = Reductionops.nf_evar evd (Evd.evar_concl evi) in
-  if free_vars_in concl (Termops.ids_of_named_context env') then
-    let evd', ev' = Evarutil.new_evar_instance env_val' evd 
-      concl (Array.to_list (id_substitution env')) in
-    Evd.define ev ev' evd'
-  else raise CannotPrune
+  let id_env' = Array.to_list (id_substitution env') in
+  match invert Util.Intmap.empty evd env' concl id_env' [] with
+      None -> raise CannotPrune
+    | Some (m, concl) ->
+      let evd = prune_all m evd in
+      let concl = Reductionops.nf_evar evd (Evd.evar_concl evi) in
+      let evd', ev' = Evarutil.new_evar_instance env_val' evd 
+	concl id_env' in
+      Evd.define ev ev' evd'
 
-let prune_all map evd =
+and prune_all map evd =
   List.fold_left prune evd (Util.Intmap.bindings map)
 
 (* pre: |s1| = |s2| 
