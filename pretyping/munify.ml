@@ -822,7 +822,22 @@ and remove_etas nargs t =
       | _ -> t
   in remove 0 [] t
     
+and remove_equal_tail (h, args) (h', args') =
+  let rargs = List.rev args in
+  let rargs' = List.rev args' in
+  let noccur i xs ys = Term.noccurn i h && Term.noccurn i h'
+     && List.for_all (Term.noccurn i) xs && List.for_all (Term.noccurn i) ys in
+  let rec remove rargs rargs' =
+    match rargs, rargs' with
+      | (x :: xs), (y :: ys) when 
+          isRel x && eq_constr x y && noccur (destRel x) xs ys -> remove xs ys
+      | _, _ -> rargs, rargs'
+  in 
+  let (xs, ys) = remove rargs rargs' in
+  (List.rev xs, List.rev ys)
+
 and instantiate' dbg ts conv_t env sigma0 (ev, subs as uv) args (h, args') =
+  let args, args' = remove_equal_tail (mkEvar uv, args) (h, args') in
   (* beta-reduce to remove dependencies *)
   let t = Reductionops.whd_beta sigma0 (applist (h, args')) in 
     let evi = Evd.find_undefined sigma0 ev in
@@ -840,7 +855,7 @@ and instantiate' dbg ts conv_t env sigma0 (ev, subs as uv) args (h, args') =
         if Termops.occur_meta t' || Termops.occur_evar ev t' then 
 	  err sigma2
         else
-	  let t' = remove_etas (List.length args) t' in
+(*	  let t' = remove_etas (List.length args) t' in *)
           (* needed only if an inferred type *)
 	  let t' = Termops.refresh_universes t' in
 	  success (Evd.define ev t' sigma2)
