@@ -814,7 +814,6 @@ and instantiate' dbg ts conv_t env sigma0 (ev, subs as uv) args (h, args') =
         if Termops.occur_meta t' || Termops.occur_evar ev t' then 
 	  err sigma2
         else
-(*	  let t' = remove_etas (List.length args) t' in *)
           (* needed only if an inferred type *)
 	  let t' = Termops.refresh_universes t' in
 	  success (Evd.define ev t' sigma2)
