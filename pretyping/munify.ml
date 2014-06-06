@@ -295,6 +295,9 @@ exception CannotPrune
     ?ev := ?ev'[id_env']. If the prunning is unsuccessful, it throws
     the exception CannotPrune. *)
 let rec prune evd (ev, plist) =
+  (* HACK: assume that if ev is defined, then it was already prunned *)
+  if Evd.is_defined evd ev then evd
+  else
   let evi = Evd.find_undefined evd ev in
   let env = Evd.evar_context evi in
   let env' = remove env plist in
@@ -364,6 +367,7 @@ let fill_lambdas_invert_types map env sigma nc body subst args =
     return (ars, mkLambda (Names.Anonymous, ty, bdy))) args (return (args, body)) 
   >>= fun (_, bdy) -> return (!rmap, bdy)
 
+exception ProjectionNotFound
 (* [check_conv_record (t1,l1) (t2,l2)] tries to decompose the problem
    (t1 l1) = (t2 l2) into a problem
 
@@ -412,7 +416,7 @@ let check_conv_record (t1,l1) (t2,l2) =
     c,bs,(params,params1),(us,us2),(extra_args1,extra_args2),c1,
     (n,applist(t2,l2))
   with Failure _ | Not_found ->
-    raise Not_found
+    raise ProjectionNotFound
 
 let run_function = ref (fun _ _ _ -> None)
 let set_run f = run_function := f
@@ -459,6 +463,7 @@ let evar_apprec ts env sigma (c, stack) =
       | _ -> (t, Reductionops.list_of_stack stack)
   in aux (c, Reductionops.append_stack_list stack Reductionops.empty_stack)
 
+exception InternalException
 
 (* pre: c and c' are in whdnf with our definition of whd *)
 let rec unify' ?(conv_t=Reduction.CONV) dbg ts env sigma0 (c, l) (c', l') =
@@ -494,9 +499,9 @@ let rec unify' ?(conv_t=Reduction.CONV) dbg ts env sigma0 (c, l) (c', l') =
     (
       if (isConst c || isConst c') && not (eq_constr c c') then
 	try conv_record dbg ts env sigma0 t t'
-	with Not_found ->
+	with ProjectionNotFound ->
 	  try conv_record dbg ts env sigma0 t' t
-	  with Not_found -> err sigma0
+	  with ProjectionNotFound -> err sigma0
       else
 	err sigma0
     ) ||= fun _ ->
