@@ -139,8 +139,6 @@ val debug_str : string -> int -> unit
 val is_stuck : Names.transparent_state -> Environ.env -> Evd.evar_map ->
   Term.constr * Term.constr list -> bool
 
-val remove_etas : int -> Term.constr -> Term.constr
-
 val prune : Evd.evar_map -> Evd.evar * int list -> Evd.evar_map
 
 val free_vars_in : Term.constr -> Names.Idset.elt list -> bool

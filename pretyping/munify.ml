@@ -780,62 +780,21 @@ and is_stuck ts env sigma (hd, args) =
     | LetIn (_, b, _, c) -> is_unnamed (evar_apprec ts env sigma (subst1 b c, args))
     | App _| Cast _ -> assert false
   in is_unnamed (hd, args)
-
-and remove_etas nargs t = 
-  let rec find_index_from max j current a = 
-    if j > max then
-      None
-    else if j = max then
-      Some current
-    else if current = 0 then
-      None
-    else
-      let last = a.(current -1) in
-      if isRel last && destRel last = j + 1 then
-	find_index_from max (j+1) (current -1) a
-      else
-	None
-  in
-  let rec remove i abs c =
-    match kind_of_term c with
-      | Lambda (n, t, b) -> remove (i+1) ((n, t) :: abs) b
-      | App (h, a) ->
-	let last = a.(Array.length a -1) in
-	if isRel last && destRel last <= i then
-	  begin
-	  let j = find_index_from i (destRel last) (Array.length a -1) a in
-	  match j with
-	    | None -> t
-	    | Some j ->
-	      (* from j to |a|-1 we have a decreasing list of rels, starting from i *)
-	      let to_remove = min (Array.length a - j) nargs in
-	      let without_lasts = mkApp (h, Array.sub a 0 (Array.length a - to_remove)) in
-	      if Term.noccur_between (i - to_remove + 1) i without_lasts then
-		let abs = Util.list_skipn to_remove (List.rev abs) in
-		List.fold_right (fun (n, t) c -> mkLambda (n, t, c))  abs
-		  (Term.lift (-to_remove) without_lasts)
-	      else
-		t
-	  end
-	else
-	  t
-      | _ -> t
-  in remove 0 [] t
     
 and remove_equal_tail (h, args) (h', args') =
   let rargs = List.rev args in
   let rargs' = List.rev args' in
-  let noccur i xs ys = Term.noccurn i h && Term.noccurn i h'
-     && List.for_all (Term.noccurn i) xs && List.for_all (Term.noccurn i) ys in
+  let noccur i xs ys = not (Termops.occur_term i h) && not (Termops.occur_term i h')
+     && not (List.exists (Termops.occur_term i) xs) && not (List.exists (Termops.occur_term i) ys) in
   let rec remove rargs rargs' =
     match rargs, rargs' with
-      | (x :: xs), (y :: ys) when 
-          isRel x && eq_constr x y && noccur (destRel x) xs ys -> remove xs ys
+      | (x :: xs), (y :: ys) when eq_constr x y && noccur x xs ys -> remove xs ys
       | _, _ -> rargs, rargs'
   in 
   let (xs, ys) = remove rargs rargs' in
   (List.rev xs, List.rev ys)
 
+(* pre: args and args' are lists of vars and/or rels. subs is an array of rels and vars. *) 
 and instantiate' dbg ts conv_t env sigma0 (ev, subs as uv) args (h, args') =
   let args, args' = remove_equal_tail (mkEvar uv, args) (h, args') in
   (* beta-reduce to remove dependencies *)
