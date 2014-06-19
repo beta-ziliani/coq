@@ -502,7 +502,7 @@ theories/Numbers/Natural/BigN/NMake_gen.v: theories/Numbers/Natural/BigN/NMake_g
 # Mtac
 ###########################################################################
 
-mtac: $(COQC) theories plugins
+mtac: $(COQC) theories-light theories/Strings/String.vo theories/NArith/NArith.vo
 	$(COQC) -coqlib . $(MTACV)
 
 

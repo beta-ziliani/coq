@@ -353,9 +353,10 @@ let unify_same env sigma ev subs1 subs2 =
 
 
 
-(* given a list of arguments [x1 .. xn] with types [A1 .. An] and a
-   [body] with free indices [1 .. n], it returns [fun x1 : A1^-1 => .. =>
-   fun xn : An^-1 => body].
+(* given a list of arguments [args] = [x1 .. xn], a [body] with free
+   indices [1 .. n], and a substitution [subst] with context [nc] it
+   returns [fun x1 : A1{subst}^-1 => .. => fun xn : An{subst}^-1 =>
+   body], where each [A_i] is the type of [x_i].
 *)
 let fill_lambdas_invert_types map env sigma nc body subst args =
   let rmap = ref map in
@@ -371,17 +372,17 @@ exception ProjectionNotFound
 (* [check_conv_record (t1,l1) (t2,l2)] tries to decompose the problem
    (t1 l1) = (t2 l2) into a problem
 
-     l1 = params1@c1::extra_args1
-     l2 = us2@extra_args2
-     (t1 params1 c1) = (proji params (c xs))
-     (t2 us2) = (cstr us)
-     extra_args1 = extra_args2
+   l1 = params1@c1::extra_args1
+   l2 = us2@extra_args2
+   (t1 params1 c1) = (proji params (c xs))
+   (t2 us2) = (cstr us)
+   extra_args1 = extra_args2
 
    by finding a record R and an object c := [xs:bs](Build_R params v1..vn)
    with vi = (cstr us), for which we know that the i-th projection proji
    satisfies
 
-      (proji params (c xs)) = (cstr us)
+   (proji params (c xs)) = (cstr us)
 
    Rem: such objects, usable for conversion, are defined in the objdef
    table; practically, it amounts to "canonically" equip t2 into a
