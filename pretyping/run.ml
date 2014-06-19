@@ -778,7 +778,8 @@ and abs env sigma a p x y eq_proof =
           if eq_proof then
             let ex_a = mkProd (Anonymous, a, mkApp(lift 1 p, [|mkRel 1|])) in
             let px_type = mkApp(p, [|x|]) in
-            let ex_p = mkLambda (Anonymous, ex_a, CoqEq.mkAppEq px_type (mkApp(mkRel 1, [|lift 1 x|])) (lift 1 y)) in
+            let px_type_lifted = mkApp(p, [|lift 1 x|]) in
+            let ex_p = mkLambda (Anonymous, ex_a, CoqEq.mkAppEq px_type_lifted (mkApp(mkRel 1, [|lift 1 x|])) (lift 1 y)) in
             let ex_x = t in
             let ex_px = CoqEq.mkAppEqRefl px_type y in
             return sigma (CoqSigT.mkAppExistT ex_a ex_p ex_x ex_px)
