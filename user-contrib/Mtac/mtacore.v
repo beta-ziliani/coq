@@ -171,11 +171,11 @@ Notation "f >> x" := (bind f (fun r=>x r)) (at level 70).
 
 Notation "[ x .. y ] ps" := (tele (fun x=> .. (tele (fun y=>ps)).. ))
   (at level 202, x binder, y binder, ps at next level) : mtac_patt_scope.
-Notation "p => b" := (base p%core (fun _=>b%core) UniMuni) 
+Notation "p => b" := (base p%core (fun _=>b%core) UniRed) 
   (no associativity, at level 201) : mtac_patt_scope. 
-Notation "p => b 'return' T" := (@base _ T _ p%core (fun _=>b%core) UniMuni) 
+Notation "p => b 'return' T" := (@base _ T _ p%core (fun _=>b%core) UniRed) 
   (no associativity, at level 201) : mtac_patt_scope. 
-Notation "p => [ H ] b" := (base p%core (fun H=>b%core) UniMuni) 
+Notation "p => [ H ] b" := (base p%core (fun H=>b%core) UniRed) 
   (no associativity, at level 201, H at next level) : mtac_patt_scope. 
 Notation "p '=s>' b" := (base p%core (fun _=>b%core) UniSimpl) 
   (no associativity, at level 201) : mtac_patt_scope. 

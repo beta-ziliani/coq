@@ -29,7 +29,7 @@ let _ = Goptions.declare_bool_option {
   Goptions.optwrite = set_debug 
 }
 
-let evarconv_for_cs = ref false
+let evarconv_for_cs = ref true
 let get_evarconv_for_cs = fun _ -> !evarconv_for_cs
 
 let _ = Goptions.declare_bool_option {
