@@ -357,7 +357,7 @@ end
 *)
 module ArrayRefFactory = 
 struct
-  let mkArrRef= Constr.mkConstr (MtacNames.mtac_module_name ^ ".mkArray")
+  let mkArrRef= Constr.mkConstr (MtacNames.mtac_module_name ^ ".carray")
 
   let isArrRef =  Constr.isConstr mkArrRef
 
@@ -375,10 +375,10 @@ end
 
 module ArrayRefs = struct
 
-  let bag = ref (GrowingArray.make 4 [||])
+  let bag = ref (GrowingArray.make 4 ((mkProp, 0), [||]))
 
   let clean () = 
-    bag := GrowingArray.make 4 [||]
+    bag := GrowingArray.make 4 ((mkProp, 0), [||])
 
   let used () =
     GrowingArray.length !bag > 0
@@ -388,7 +388,8 @@ module ArrayRefs = struct
     let rec check depth t =
       match kind_of_term t with
       | Rel k ->
-        if depth < k && k <= depth + size then (* check if the db index points to the nu context *)
+        if depth < k && k <= depth + size then 
+	  (* check if the db index points to the nu context *)
           let rl = List.nth undo (k - depth -1) in
           rl := ((index, i) :: !rl) (* mark this location as 'dirty' *)
         else
@@ -403,29 +404,49 @@ module ArrayRefs = struct
     if closed0 a then ()
     else error "Not closed"
 
-  let new_array evd sigma undo a n c =
+
+  (* A, x : A |- 
+       a <- make_array (Rel 2) 5 (Rel 1); // 5 copies of x
+       // a is equal to [| (0, Rel 2), (0, Rel 1), ..., (0, Rel 1) |]
+       // where 0 is the level
+       nu y : A,
+         // now the context is A, x : A, y : A
+         // therefore the level is now 1
+         let _ := array_get A a 0;
+         // A is Rel 3 now, so in order to compare the type with the type of the array
+         // we need to lift by 1 (level - l), where l is the level of the type
+        array_set A a 0 y
+  *)
+  let new_array evd sigma undo ty n c =
 (*    check_close a; *)
     let level = List.length undo in
     let size = CoqN.from_coq evd sigma n in
     let arr = Array.make size (Some (c, level)) in
-    GrowingArray.add !bag arr;
+    GrowingArray.add !bag ((ty, level), arr);
     let index = pred (GrowingArray.length !bag) in
     Array.iteri (fun i t -> check_context undo index i arr) arr;
-    ArrayRefFactory.to_coq a index
+    ArrayRefFactory.to_coq ty index
 
   exception NullPointerException
 
   exception OutOfBoundsException
 
-  let get env evd undo i k = 
+  exception WrongTypeException
+
+  let get env evd undo i ty k = 
     let level = List.length undo in
     let index = ArrayRefFactory.from_coq env evd i in
     let arri = CoqN.from_coq env evd k in
-    let v = GrowingArray.get !bag index in
+    let ((aty, al), v) = GrowingArray.get !bag index in
     try
-    match v.(arri) with
-      None -> raise NullPointerException
-    | Some (c, l) -> (lift (level - l) c)
+      match v.(arri) with
+	  None -> raise NullPointerException
+      | Some (c, l) -> 
+	try
+	  let aty = lift (level - al) aty in
+	  let evd = the_conv_x env aty ty evd in
+	  (evd, lift (level - l) c)
+        with _ -> raise WrongTypeException
     with Invalid_argument _ -> raise OutOfBoundsException
 
   (* HACK SLOW *)
@@ -433,24 +454,29 @@ module ArrayRefs = struct
     List.iter (fun rl ->
       rl := List.filter (fun i -> i <> (index, k)) !rl) undo
 
-  let set env evd undo i k c = 
+  let set env evd undo i k ty c = 
     let level = List.length undo in
     let index = ArrayRefFactory.from_coq env evd i in
     let arri = CoqN.from_coq env evd k in
     remove_all undo index arri;
-    let v = GrowingArray.get !bag index in
+    let ((aty, al), v) = GrowingArray.get !bag index in
     try
+      let aty = lift (level - al) aty in
+      let evd = the_conv_x env aty ty evd in
       v.(arri) <- Some (c, level);
-      check_context undo index arri v
+      check_context undo index arri v;
+      evd
     with Invalid_argument _ -> raise OutOfBoundsException
+      | _ -> raise WrongTypeException
 
   let length env evd i =
     let index = ArrayRefFactory.from_coq env evd i in
-    let v = GrowingArray.get !bag index in
+    let (_, v) = GrowingArray.get !bag index in
     CoqN.to_coq (Array.length v)
 
   let invalidate (index, k) =
-    (GrowingArray.get !bag index).(k) <- None
+    let (_, v) = GrowingArray.get !bag index in
+    v.(k) <- None
     
 end
 
@@ -728,27 +754,33 @@ let rec run' (env, sigma, undo as ctxt) t =
 
       | 21 -> assert_args 3; (* new_array *)
 	let ty, n, c = nth 0, nth 1, nth 2 in
-	return sigma (ArrayRefs.new_array env sigma undo ty n c)
+	let a = ArrayRefs.new_array env sigma undo ty n c in
+	return sigma a
 
       | 22 -> assert_args 3; (* get *)
 	let ty, a, i = nth 0, nth 1, nth 2 in
 	begin
 	try
-	  return sigma (ArrayRefs.get env sigma undo a i)
+	  let (sigma, e) = ArrayRefs.get env sigma undo a ty i in
+	  return sigma e
 	with ArrayRefs.NullPointerException ->
 	  fail (Lazy.force Exceptions.mkNullPointer)
 	  | ArrayRefs.OutOfBoundsException ->
 	  fail (Lazy.force Exceptions.mkOutOfBounds)
+	  | ArrayRefs.WrongTypeException ->
+	    Exceptions.raise "Wrong type!"
 	end
 
       | 23 -> assert_args 4; (* set *)
 	let ty, a, i, c = nth 0, nth 1, nth 2, nth 3 in
 	begin
 	try 
-	  ArrayRefs.set env sigma undo a i c;
+	  let sigma = ArrayRefs.set env sigma undo a i ty c in
  	  return sigma (Lazy.force CoqUnit.mkTT)
 	with ArrayRefs.OutOfBoundsException ->
 	  fail (Lazy.force Exceptions.mkOutOfBounds)
+	  | ArrayRefs.WrongTypeException ->
+	    Exceptions.raise "Wrong type!"
 	end
 
       | 24 -> assert_args 2; (* length *)

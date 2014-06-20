@@ -4,23 +4,10 @@ Require Import NArith.BinNat.
 Require Import NArith.BinNatDef.
 
 
-Module Type MyArray.
-
-Axiom array :  Type -> Type.
-
-End MyArray.
-
-Module MyArrayImp : MyArray.
-
-Inductive arrayt : forall A : Type, Type :=
-| mkArray : forall A, N -> arrayt A.
-
-Definition array := arrayt.
-End MyArrayImp.
 
 
 Module Mtac.
-Export MyArrayImp.
+
 
 Inductive Exception : Type := exception : Exception.
 
@@ -40,13 +27,13 @@ Definition ArrayOutOfBounds : Exception.
   exact exception.
 Qed.
 
+Inductive array : forall A : Type, Type :=
+| carray : forall A, N -> array A.
 
 Inductive Ref (A : Type) := 
 | mkRef : array A -> Ref A.
 
 Arguments mkRef {A} _.
-
-Definition mkArray (A : Type) (n : N) (v : A) : Type. exact Prop. Qed.
 
 Inductive Reduction : Type :=
 | RedNone : Reduction
