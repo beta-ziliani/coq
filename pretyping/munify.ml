@@ -795,6 +795,9 @@ and remove_equal_tail (h, args) (h', args') =
   let (xs, ys) = remove rargs rargs' in
   (List.rev xs, List.rev ys)
 
+and no_metas t =
+  List.exists (fun c -> c >= 0) (Termops.collect_metas t)
+
 (* pre: args and args' are lists of vars and/or rels. subs is an array of rels and vars. *) 
 and instantiate' dbg ts conv_t env sigma0 (ev, subs as uv) args (h, args') =
   let args, args' = remove_equal_tail (mkEvar uv, args) (h, args') in
@@ -812,7 +815,7 @@ and instantiate' dbg ts conv_t env sigma0 (ev, subs as uv) args (h, args') =
       let ty = Evd.existential_type sigma1 uv in
       let p = unify_constr ~conv_t:Reduction.CUMUL (dbg+1) ts env sigma1 ty' ty &&= fun sigma2 ->
         let t' = Reductionops.nf_evar sigma2 t' in
-        if Termops.occur_meta t' || Termops.occur_evar ev t' then 
+        if no_metas t' || Termops.occur_evar ev t' then 
 	  err sigma2
         else
           (* needed only if an inferred type *)

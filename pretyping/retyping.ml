@@ -60,7 +60,12 @@ let retype ?(polyprop=true) sigma =
     match kind_of_term cstr with
     | Meta n ->
       (try strip_outer_cast (Evd.meta_ftype sigma n).Evd.rebus
-       with Not_found -> anomaly ("type_of: unknown meta " ^ string_of_int n))
+       with Not_found -> 
+	 (* BETA *)
+	 if n < 0 then 
+	   Refs.type_of env sigma cstr
+	 else
+	   anomaly ("type_of: unknown meta " ^ string_of_int n))
     | Rel n ->
         let (_,_,ty) = lookup_rel n env in
         lift n ty

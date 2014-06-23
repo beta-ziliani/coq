@@ -46,8 +46,6 @@ Inductive Ref (A : Type) :=
 
 Arguments mkRef {A} _.
 
-Definition mkArray (A : Type) (n : N) (v : A) : Type. exact Prop. Qed.
-
 Inductive Reduction : Type :=
 | RedNone : Reduction
 | RedSimpl : Reduction

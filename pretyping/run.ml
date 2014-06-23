@@ -15,29 +15,9 @@ open Evarconv
 open Libnames
 
 open Munify
+open Stdlib_constr
 
-let reduce_value = Tacred.compute
-
-module Constr = struct
-  let mkConstr name = lazy (constr_of_global (Nametab.global_of_path (path_of_string name)))
-
-  let isConstr = fun r c -> eq_constr (Lazy.force r) c
-end
-
-module MtacNames = struct
-  let mtacore_name = "Mtac.mtacore"
-  let mtac_module_name = mtacore_name ^ ".Mtac"
-  let mkLazyConstr = fun e-> Constr.mkConstr (mtac_module_name ^ "." ^ e)
-  let mkConstr = fun e-> Lazy.force (Constr.mkConstr (mtac_module_name ^ "." ^ e))
-  let mkT_lazy = lazy (mkConstr "Mtac")
-
-  let mkBase = mkLazyConstr "base"
-  let mkTele = mkLazyConstr "tele"
-
-  let isBase = Constr.isConstr mkBase
-  let isTele = Constr.isConstr mkTele
-
-end
+let init = Stdlib_constr.reduce_value := Tacred.compute
 
 module Exceptions = struct
 
@@ -146,313 +126,6 @@ end
 
 let mkT () = Lazy.force MtacNames.mkT_lazy
 
-module CoqList = struct
-  let mkNil  = Constr.mkConstr "Coq.Init.Datatypes.nil"
-  let mkCons = Constr.mkConstr "Coq.Init.Datatypes.cons"
-
-  let isNil  = Constr.isConstr mkNil
-  let isCons = Constr.isConstr mkCons
-end
-
-module CoqEq = struct
-  let mkEq = Constr.mkConstr "Coq.Init.Logic.eq"
-  let mkEqRefl = Constr.mkConstr "Coq.Init.Logic.eq_refl"
-
-  let mkAppEq a x y = mkApp(Lazy.force mkEq, [|a;x;y|])
-  let mkAppEqRefl a x = mkApp(Lazy.force mkEqRefl, [|a;x|])
-end
-
-module CoqSigT = struct
-  let mkExistT  = Constr.mkConstr "Coq.Init.Specif.existT"
-
-  let mkAppExistT a p x px =
-    mkApp (Lazy.force mkExistT, [|a; p; x; px|])
-end
-
-module CoqNat = struct
-  let mkZero = Constr.mkConstr "Coq.Init.Datatypes.O"
-  let mkSucc = Constr.mkConstr "Coq.Init.Datatypes.S"
-
-  let isZero = Constr.isConstr mkZero
-  let isSucc = Constr.isConstr mkSucc
-
-  let rec to_coq = function
-    | 0 -> Lazy.force mkZero
-    | n -> Term.mkApp (Lazy.force mkSucc, [| to_coq (pred n) |])
-
-  let from_coq env evd c =
-    let rec fc c = 
-      if isZero c then
-        0
-      else 
-        let (s, n) = destApp c in
-        begin
-          if isSucc s then
-            1 + (fc (n.(0)))
-          else
-	    Exceptions.raise "Not a nat"
-        end
-    in
-    let c' = reduce_value env evd c in
-    fc c'
-     
-end
-
-module CoqPositive = struct
-  let xI = Constr.mkConstr "Coq.Numbers.BinNums.xI"
-  let xO = Constr.mkConstr "Coq.Numbers.BinNums.xO"
-  let xH = Constr.mkConstr "Coq.Numbers.BinNums.xH"
-
-  let isH = Constr.isConstr xH
-  let isI = Constr.isConstr xI
-  let isO = Constr.isConstr xO
-  
-  let from_coq env evd c =
-    let rec fc i c =
-      if isH c then
-        1
-      else 
-        let (s, n) = destApp c in
-        begin
-          if isI s then
-            (fc (i+1) (n.(0)))*2 + 1
-          else if isO s then
-            (fc (i+1) (n.(0)))*2
-          else
-	    Exceptions.raise"Not a positive"
-        end
-    in
-    let c' = reduce_value env evd c in
-    fc 0 c'
-
-  let rec to_coq n =
-    if n = 1 then
-      Lazy.force xH
-    else if n mod 2 = 0 then
-      mkApp(Lazy.force xO, [|to_coq (n / 2)|])
-    else
-      mkApp(Lazy.force xI, [|to_coq ((n-1)/2)|])
-
-end
-
-module CoqN = struct
-  let tN = Constr.mkConstr "Coq.Numbers.BinNums.N"
-  let h0 = Constr.mkConstr "Coq.Numbers.BinNums.N0"
-  let hP = Constr.mkConstr "Coq.Numbers.BinNums.Npos"
-
-  let is0 = Constr.isConstr h0
-  let isP = Constr.isConstr hP
-
-  let from_coq env evd c =
-    let rec fc c = 
-      if is0 c then
-        0
-      else 
-        let (s, n) = destApp c in
-        begin
-          if isP s then
-            CoqPositive.from_coq env evd (n.(0))
-          else
-	    Exceptions.raise "Not a positive"
-        end
-    in
-    let c' = reduce_value env evd c in
-    fc c'
-
-  let to_coq n =
-    if n = 0 then
-      Lazy.force h0
-    else
-      mkApp(Lazy.force hP, [|CoqPositive.to_coq n|])
-end
-
-module CoqBool = struct
-
-  let mkTrue = Constr.mkConstr "Coq.Init.Datatypes.true"
-  let mkFalse = Constr.mkConstr "Coq.Init.Datatypes.false"
-
-  let isTrue = Constr.isConstr mkTrue
-
-end 
-
-module CoqAscii = struct
-
-  let from_coq env sigma c =
-    let (h, args) = whd_betadeltaiota_stack env sigma c in
-    let rec from_bits n bits =
-      match bits with
-        | [] -> 0
-        | (b :: bs) -> (if CoqBool.isTrue b then 1 else 0) lsl n + from_bits (n+1) bs
-    in 
-    let n = from_bits 0 args in
-    Char.escaped (Char.chr n)
-
-end 
-
-module CoqString = struct
-
-  let mkEmpty = Constr.mkConstr "Coq.Strings.String.EmptyString"
-  let mkString = Constr.mkConstr "Coq.Strings.String.String"
-
-  let isEmpty = Constr.isConstr mkEmpty
-  let isString = Constr.isConstr mkString
-
-  let rec from_coq env sigma s =
-    let (h, args) = whd_betadeltaiota_stack env sigma s in
-    if isEmpty h then
-      ""
-    else if isString h then
-      let c, s' = List.nth args 0, List.nth args 1 in
-      CoqAscii.from_coq env sigma c ^ from_coq env sigma s'
-    else
-      Exceptions.raise "Not a string"
-
-end
-
-module CoqUnit = struct
-  let mkTT = Constr.mkConstr "Coq.Init.Datatypes.tt"
-end
-
-(** An array that grows 1.5 times when it gets out of space *) 
-module GrowingArray = struct
-  type 'a t = 'a array ref * 'a * int ref
-  
-  let make i t = (ref (Array.make i t), t, ref 0)
-  let length g = let (_, _, i) = g in !i
-  let get g = let (a, _, _) = g in Array.get !a
-  let set g = let (a, _, _) = g in Array.set !a
-
-  let add g t =
-    let (a, e, i) = g in
-    begin
-    if Array.length !a <= !i then
-      a := Array.append !a (Array.make (Array.length !a / 2) e)
-    else
-      ()
-    end;
-    Array.set !a !i t;
-    i := !i+1
- 
-end
-
-(*
-  OUTDATED EXPLANATION: instead of storing one cell references we store arrays
-
-   The context of the references is never changed, except when a new
-   parameter is inserted using (nu x, t). Then, when exiting the context
-   of nu x, we need to make sure that no reference refers to x. For this 
-   reason, we keep a list of references to lists enumerating the references 
-   pointing to x. To make it clear, the argument 'undo' used by many of the 
-   functions has the following shape:
-
-   [ r1 ; r2 ; ... ; rn ]
-
-   where r1 corresponds to the innermost nu executed, and rn to the outermost.
-   Each ri is a reference to a list [x1 ; ...; xim] of im references pointing
-   to values that refer to the binder noted by i.
-
-   When leaving the scope of x, the execution makes sure every reference listed 
-   in the list referred on the top of the undo list is invalidated, that is,
-   pointing to "null". 
-*)
-module ArrayRefFactory = 
-struct
-  let mkArrRef= Constr.mkConstr (MtacNames.mtac_module_name ^ ".mkArray")
-
-  let isArrRef =  Constr.isConstr mkArrRef
-
-  let to_coq a n = 
-    Term.mkApp (Lazy.force mkArrRef, [|a ; CoqN.to_coq n|])
-
-  let from_coq env evd c =
-    let c = whd_betadeltaiota env evd c in
-    if isApp c && isArrRef (fst (destApp c)) then
-      CoqN.from_coq env evd (snd (destApp c)).(1)
-    else
-      Exceptions.raise "Not a reference"
-
-end
-
-module ArrayRefs = struct
-
-  let bag = ref (GrowingArray.make 4 [||])
-
-  let clean () = 
-    bag := GrowingArray.make 4 [||]
-
-  let used () =
-    GrowingArray.length !bag > 0
-
-  let check_context undo index i arr =
-    let size = List.length undo in
-    let rec check depth t =
-      match kind_of_term t with
-      | Rel k ->
-        if depth < k && k <= depth + size then (* check if the db index points to the nu context *)
-          let rl = List.nth undo (k - depth -1) in
-          rl := ((index, i) :: !rl) (* mark this location as 'dirty' *)
-        else
-          ()
-      | _ -> iter_constr_with_binders succ check depth t
-    in
-    match arr.(i) with 
-      | Some (c', _) -> check 0 c' 
-      | _ -> ()
-
-  let check_close a =
-    if closed0 a then ()
-    else error "Not closed"
-
-  let new_array evd sigma undo a n c =
-(*    check_close a; *)
-    let level = List.length undo in
-    let size = CoqN.from_coq evd sigma n in
-    let arr = Array.make size (Some (c, level)) in
-    GrowingArray.add !bag arr;
-    let index = pred (GrowingArray.length !bag) in
-    Array.iteri (fun i t -> check_context undo index i arr) arr;
-    ArrayRefFactory.to_coq a index
-
-  exception NullPointerException
-
-  exception OutOfBoundsException
-
-  let get env evd undo i k = 
-    let level = List.length undo in
-    let index = ArrayRefFactory.from_coq env evd i in
-    let arri = CoqN.from_coq env evd k in
-    let v = GrowingArray.get !bag index in
-    try
-    match v.(arri) with
-      None -> raise NullPointerException
-    | Some (c, l) -> (lift (level - l) c)
-    with Invalid_argument _ -> raise OutOfBoundsException
-
-  (* HACK SLOW *)
-  let remove_all undo index k =
-    List.iter (fun rl ->
-      rl := List.filter (fun i -> i <> (index, k)) !rl) undo
-
-  let set env evd undo i k c = 
-    let level = List.length undo in
-    let index = ArrayRefFactory.from_coq env evd i in
-    let arri = CoqN.from_coq env evd k in
-    remove_all undo index arri;
-    let v = GrowingArray.get !bag index in
-    try
-      v.(arri) <- Some (c, level);
-      check_context undo index arri v
-    with Invalid_argument _ -> raise OutOfBoundsException
-
-  let length env evd i =
-    let index = ArrayRefFactory.from_coq env evd i in
-    let v = GrowingArray.get !bag index in
-    CoqN.to_coq (Array.length v)
-
-  let invalidate (index, k) =
-    (GrowingArray.get !bag index).(k) <- None
-    
-end
 
 
 type data = Val of (evar_map * constr) | Err of constr
@@ -543,7 +216,7 @@ exception AbstractingArrayType
 
 let mysubstn t n c =
   let rec substrec in_arr depth c = match kind_of_term c with
-    | App (c, l) when ArrayRefFactory.isArrRef c ->
+    | App (c, l) when Refs.isArrRef c ->
       mkApp (c, [|substrec true depth l.(0); l.(1)|])
     | Rel k    ->
         if k<=depth then c
@@ -728,16 +401,16 @@ let rec run' (env, sigma, undo as ctxt) t =
 
       | 21 -> assert_args 3; (* new_array *)
 	let ty, n, c = nth 0, nth 1, nth 2 in
-	return sigma (ArrayRefs.new_array env sigma undo ty n c)
+	return sigma (Refs.new_array env sigma undo ty n c)
 
       | 22 -> assert_args 3; (* get *)
 	let ty, a, i = nth 0, nth 1, nth 2 in
 	begin
 	try
-	  return sigma (ArrayRefs.get env sigma undo a i)
-	with ArrayRefs.NullPointerException ->
+	  return sigma (Refs.get env sigma undo a i)
+	with Refs.NullPointerException ->
 	  fail (Lazy.force Exceptions.mkNullPointer)
-	  | ArrayRefs.OutOfBoundsException ->
+	  | Refs.OutOfBoundsException ->
 	  fail (Lazy.force Exceptions.mkOutOfBounds)
 	end
 
@@ -745,15 +418,15 @@ let rec run' (env, sigma, undo as ctxt) t =
 	let ty, a, i, c = nth 0, nth 1, nth 2, nth 3 in
 	begin
 	try 
-	  ArrayRefs.set env sigma undo a i c;
+	  Refs.set env sigma undo a i c;
  	  return sigma (Lazy.force CoqUnit.mkTT)
-	with ArrayRefs.OutOfBoundsException ->
+	with Refs.OutOfBoundsException ->
 	  fail (Lazy.force Exceptions.mkOutOfBounds)
 	end
 
       | 24 -> assert_args 2; (* length *)
 	let i = nth 1 in
-	return sigma (ArrayRefs.length env sigma i)
+	return sigma (Refs.length env sigma i)
 
       | 25 -> assert_args 2; (* print term *)
     let t = nth 1 in
@@ -795,7 +468,7 @@ and abs env sigma a p x y eq_proof =
     Exceptions.raise Exceptions.error_abs
 
 and clean =
-  List.iter (fun i -> ArrayRefs.invalidate i)
+  List.iter (fun i -> Refs.invalidate i)
     
 and run_fix (env, sigma, _ as ctxt) h a b s i f x =
   let fixf = mkApp(h, Array.append a [|b;s;i;f|]) in
@@ -823,14 +496,14 @@ and hash (env, sigma, undo) c size =
   CoqN.to_coq (Pervasives.abs (h mod size))
 
 let assert_free_of_refs c =
-  if not (ArrayRefs.used ()) then
+  if not (Refs.used ()) then
     ()
-  else if occur_term (Lazy.force ArrayRefFactory.mkArrRef) c then
+  else if List.exists (fun i->i<0) (collect_metas c) then
     error "Returning a reference. This is not allowed since you might be naughty and use it in the next execution."
   else ()
 
 let run (env, sigma) t  = 
-  let _ = ArrayRefs.clean () in
+  let _ = Refs.clean () in
   match run' (env, sigma, []) (nf_evar sigma t) with
     | Err i -> 
       assert_free_of_refs i;

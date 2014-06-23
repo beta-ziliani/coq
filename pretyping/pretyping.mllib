@@ -4,6 +4,8 @@ Reductionops
 Vnorm
 Namegen
 Inductiveops
+Stdlib_constr
+Refs
 Retyping
 Cbv
 Pretype_errors
