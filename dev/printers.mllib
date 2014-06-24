@@ -73,6 +73,8 @@ Evd
 Glob_term
 Reductionops
 Inductiveops
+Stdlib_constr
+Refs
 Retyping
 Cbv
 Pretype_errors
