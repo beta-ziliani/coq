@@ -389,29 +389,25 @@ end
 
 module ArrayRefs = struct
 
-  let bag = ref (GrowingArray.make 4 ((mkProp, 0), [||]))
+  let init () = GrowingArray.make 4 ((None, 0), [||])
+
+  let bag = ref (init ())
 
   let clean () = 
-    bag := GrowingArray.make 4 ((mkProp, 0), [||])
+    bag := init ()
 
-  let used () =
-    GrowingArray.length !bag > 0
+  let get_parameters params t = Intset.filter (fun i -> i <= params) (free_rels t)
 
   let check_context undo index i arr =
-    let size = List.length undo in
-    let rec check depth t =
-      match kind_of_term t with
-      | Rel k ->
-        if depth < k && k <= depth + size then 
-	  (* check if the db index points to the nu context *)
-          let rl = List.nth undo (k - depth -1) in
-          rl := ((index, i) :: !rl) (* mark this location as 'dirty' *)
-        else
-          ()
-      | _ -> iter_constr_with_binders succ check depth t
-    in
     match arr.(i) with 
-      | Some (c', _) -> check 0 c' 
+      | Some (c', _) ->     
+        let level = List.length undo in
+	(* check if the db index points to the nu context *)
+        let params = get_parameters level c' in
+        Intset.iter (fun k ->
+          let rl = List.nth undo (k -1) in
+          rl := ((index, i) :: !rl) (* mark this location as 'dirty' *)
+        ) params
       | _ -> ()
 
 
@@ -431,8 +427,13 @@ module ArrayRefs = struct
     let level = List.length undo in
     let size = CoqN.from_coq evd sigma n in
     let arr = Array.make size (Some (c, level)) in
-    GrowingArray.add !bag ((ty, level), arr);
-    let index = pred (GrowingArray.length !bag) in
+    let index = GrowingArray.length !bag in
+    let params = get_parameters level ty in
+    Intset.iter (fun k ->
+      let rl = List.nth undo (k -1) in
+      rl := ((index, -1) :: !rl) (* mark this location as 'dirty' *)
+    ) params;
+    GrowingArray.add !bag ((Some ty, level), arr);
     Array.iteri (fun i t -> check_context undo index i arr) arr;
     ArrayRefFactory.to_coq ty index n
 
@@ -447,14 +448,15 @@ module ArrayRefs = struct
     let arri = CoqN.from_coq env evd k in
     try
       let ((aty, al), v) = GrowingArray.get !bag index in
-      match v.(arri) with
-	  None -> raise NullPointerException
-      | Some (c, l) -> 
-	try
-	  let aty = lift (level - al) aty in
-	  let evd = the_conv_x env aty ty evd in
-	  (evd, lift (level - l) c)
-        with _ -> raise WrongTypeException
+      match aty, v.(arri) with
+	| None,  _ -> raise WrongIndexException
+        | _, None -> raise NullPointerException
+        | Some aty, Some (c, l) -> 
+	  try
+	    let aty = lift (level - al) aty in
+	    let evd = the_conv_x env aty ty evd in
+	    (evd, lift (level - l) c)
+          with _ -> raise WrongTypeException
     with Invalid_argument _ -> raise OutOfBoundsException
       | GrowingArray.OutOfBounds -> raise WrongIndexException
 
@@ -470,18 +472,24 @@ module ArrayRefs = struct
     remove_all undo index arri;
     try
       let ((aty, al), v) = GrowingArray.get !bag index in
-      let aty = lift (level - al) aty in
-      let evd = the_conv_x env aty ty evd in
-      v.(arri) <- Some (c, level);
-      check_context undo index arri v;
-      evd
+      match aty with
+        | Some aty -> 
+          let aty = lift (level - al) aty in
+          let evd = the_conv_x env aty ty evd in
+          v.(arri) <- Some (c, level);
+          check_context undo index arri v;
+          evd
+        | None -> raise WrongTypeException
     with Invalid_argument _ -> raise OutOfBoundsException
-      | _ -> raise WrongTypeException
       | GrowingArray.OutOfBounds -> raise WrongIndexException
+      | _ -> raise WrongTypeException
 
   let invalidate (index, k) =
-    let (_, v) = GrowingArray.get !bag index in
-    v.(k) <- None
+    let ((ty, i), v) = GrowingArray.get !bag index in
+    if k < 0 then
+      GrowingArray.set !bag index ((None, i), v)
+    else
+      v.(k) <- None
     
 end
 
@@ -574,13 +582,10 @@ exception AbstractingArrayType
 
 let mysubstn t n c =
   let rec substrec in_arr depth c = match kind_of_term c with
-    | App (c, l) when ArrayRefFactory.isArrRef c ->
-      mkApp (c, [|substrec true depth l.(0); l.(1)|])
     | Rel k    ->
         if k<=depth then c
         else if k = depth+n then
-          if in_arr then raise AbstractingArrayType
-          else lift depth t
+          lift depth t
         else mkRel (k+1)
     | _ -> map_constr_with_binders succ (substrec in_arr) depth c in
   substrec false 0 c
