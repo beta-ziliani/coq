@@ -76,7 +76,7 @@ Module HashTbl.
 
   
   Definition quick_add {A P} (a : Array.t (list (sigT P))) (x : A) (y : P x) : M unit :=
-    n <- Array.length a;
+    let n := Array.length a in
     i <- hash x n;
     l <- Array.get a i;
     Array.set a i (existT _ x y  :: l).
@@ -93,7 +93,7 @@ Module HashTbl.
   Definition expand {A B} (h : t A B) : M unit :=
     let (_, ra) := h in
     a <- !ra;
-    size <- Array.length a;
+    let size := Array.length a in
     let new_size := (size * inc_factor)%N in
     new_a <- Array.make new_size nil;
     iter h (fun x y=> quick_add new_a x y);;
@@ -125,7 +125,7 @@ Module HashTbl.
     let (rl, ra) := h in
     load <- !rl;
     a <- !ra;
-    size <- Array.length a;
+    let size := Array.length a in
     (if (threshold * size <=? 10 * load)%N then
       expand h
     else
@@ -138,7 +138,7 @@ Module HashTbl.
   Definition find {A B} (h : t A B) (x : A) : M (B x) :=
     let (_, ra) := h in
     a <- !ra;
-    size <- Array.length a;
+    let size := Array.length a in
     i <- hash x size;
     l <- Array.get a i;
     mtry
@@ -150,7 +150,7 @@ Module HashTbl.
   Definition remove {A B} (h : t A B) (x : A) : M unit :=
     let (rl, ra) := h in
     a <- !ra;
-    size <- Array.length a;
+    let size := Array.length a in
     i <- hash x size;
     l <- Array.get a i;
     l' <- ListMtactics.remove x l;

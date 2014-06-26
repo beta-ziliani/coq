@@ -319,8 +319,22 @@ module GrowingArray = struct
   
   let make i t = (ref (Array.make i t), t, ref 0)
   let length g = let (_, _, i) = g in !i
-  let get g = let (a, _, _) = g in Array.get !a
-  let set g = let (a, _, _) = g in Array.set !a
+
+  exception OutOfBounds
+                                  
+  let get g i = 
+    let (a, _, l) = g in 
+    if i < !l then
+      Array.get !a i
+    else
+      raise OutOfBounds
+
+  let set g i = 
+    let (a, _, l) = g in 
+    if i < !l then
+      Array.set !a i
+    else
+      raise OutOfBounds
 
   let add g t =
     let (a, e, i) = g in
@@ -361,8 +375,8 @@ struct
 
   let isArrRef =  Constr.isConstr mkArrRef
 
-  let to_coq a n = 
-    Term.mkApp (Lazy.force mkArrRef, [|a ; CoqN.to_coq n|])
+  let to_coq a i n = 
+    Term.mkApp (Lazy.force mkArrRef, [|a ; CoqN.to_coq i; n|])
 
   let from_coq env evd c =
     let c = whd_betadeltaiota env evd c in
@@ -400,10 +414,6 @@ module ArrayRefs = struct
       | Some (c', _) -> check 0 c' 
       | _ -> ()
 
-  let check_close a =
-    if closed0 a then ()
-    else error "Not closed"
-
 
   (* A, x : A |- 
        a <- make_array (Rel 2) 5 (Rel 1); // 5 copies of x
@@ -418,27 +428,25 @@ module ArrayRefs = struct
         array_set A a 0 y
   *)
   let new_array evd sigma undo ty n c =
-(*    check_close a; *)
     let level = List.length undo in
     let size = CoqN.from_coq evd sigma n in
     let arr = Array.make size (Some (c, level)) in
     GrowingArray.add !bag ((ty, level), arr);
     let index = pred (GrowingArray.length !bag) in
     Array.iteri (fun i t -> check_context undo index i arr) arr;
-    ArrayRefFactory.to_coq ty index
+    ArrayRefFactory.to_coq ty index n
 
   exception NullPointerException
-
   exception OutOfBoundsException
-
   exception WrongTypeException
+  exception WrongIndexException
 
   let get env evd undo i ty k = 
     let level = List.length undo in
     let index = ArrayRefFactory.from_coq env evd i in
     let arri = CoqN.from_coq env evd k in
-    let ((aty, al), v) = GrowingArray.get !bag index in
     try
+      let ((aty, al), v) = GrowingArray.get !bag index in
       match v.(arri) with
 	  None -> raise NullPointerException
       | Some (c, l) -> 
@@ -448,6 +456,7 @@ module ArrayRefs = struct
 	  (evd, lift (level - l) c)
         with _ -> raise WrongTypeException
     with Invalid_argument _ -> raise OutOfBoundsException
+      | GrowingArray.OutOfBounds -> raise WrongIndexException
 
   (* HACK SLOW *)
   let remove_all undo index k =
@@ -459,8 +468,8 @@ module ArrayRefs = struct
     let index = ArrayRefFactory.from_coq env evd i in
     let arri = CoqN.from_coq env evd k in
     remove_all undo index arri;
-    let ((aty, al), v) = GrowingArray.get !bag index in
     try
+      let ((aty, al), v) = GrowingArray.get !bag index in
       let aty = lift (level - al) aty in
       let evd = the_conv_x env aty ty evd in
       v.(arri) <- Some (c, level);
@@ -468,11 +477,7 @@ module ArrayRefs = struct
       evd
     with Invalid_argument _ -> raise OutOfBoundsException
       | _ -> raise WrongTypeException
-
-  let length env evd i =
-    let index = ArrayRefFactory.from_coq env evd i in
-    let (_, v) = GrowingArray.get !bag index in
-    CoqN.to_coq (Array.length v)
+      | GrowingArray.OutOfBounds -> raise WrongIndexException
 
   let invalidate (index, k) =
     let (_, v) = GrowingArray.get !bag index in
@@ -769,6 +774,8 @@ let rec run' (env, sigma, undo as ctxt) t =
 	  fail (Lazy.force Exceptions.mkOutOfBounds)
 	  | ArrayRefs.WrongTypeException ->
 	    Exceptions.raise "Wrong type!"
+	  | ArrayRefs.WrongIndexException ->
+	    Exceptions.raise "Wrong array!"
 	end
 
       | 23 -> assert_args 4; (* set *)
@@ -781,15 +788,13 @@ let rec run' (env, sigma, undo as ctxt) t =
 	  fail (Lazy.force Exceptions.mkOutOfBounds)
 	  | ArrayRefs.WrongTypeException ->
 	    Exceptions.raise "Wrong type!"
+	  | ArrayRefs.WrongIndexException ->
+	    Exceptions.raise "Wrong array!"
 	end
 
-      | 24 -> assert_args 2; (* length *)
-	let i = nth 1 in
-	return sigma (ArrayRefs.length env sigma i)
-
-      | 25 -> assert_args 2; (* print term *)
-    let t = nth 1 in
-    print_term t;
+      | 24 -> assert_args 2; (* print term *)
+        let t = nth 1 in
+        print_term t;
 	return sigma (Lazy.force CoqUnit.mkTT)
 
       | _ ->
@@ -854,21 +859,13 @@ and hash (env, sigma, undo) c size =
   let h = Term.hash_constr (upd 0 c) in
   CoqN.to_coq (Pervasives.abs (h mod size))
 
-let assert_free_of_refs c =
-  if not (ArrayRefs.used ()) then
-    ()
-  else if occur_term (Lazy.force ArrayRefFactory.mkArrRef) c then
-    error "Returning a reference. This is not allowed since you might be naughty and use it in the next execution."
-  else ()
 
 let run (env, sigma) t  = 
   let _ = ArrayRefs.clean () in
   match run' (env, sigma, []) (nf_evar sigma t) with
     | Err i -> 
-      assert_free_of_refs i;
       Err i
     | Val (sigma', v) -> 
-      assert_free_of_refs v;
       Val (sigma', nf_evar sigma' v)
 
 

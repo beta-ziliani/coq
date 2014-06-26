@@ -27,8 +27,11 @@ Definition ArrayOutOfBounds : Exception.
   exact exception.
 Qed.
 
+Definition index := N.
+Definition length := N.
+
 Inductive array : forall A : Type, Type :=
-| carray : forall A, N -> array A.
+| carray : forall A, index -> length -> array A.
 
 Inductive Ref (A : Type) := 
 | mkRef : array A -> Ref A.
@@ -95,13 +98,14 @@ Inductive Mtac : Type -> Prop :=
 | array_make : forall {A}, N -> A -> Mtac (array A)
 | array_get : forall {A}, array A -> N -> Mtac A
 | array_set : forall {A}, array A -> N -> A -> Mtac unit
-| array_length : forall {A}, array A -> Mtac N
 | print_term : forall {A}, A -> Mtac unit 
-| nu_abs : forall {A B}, (forall x : A, Mtac (B x)) -> Mtac (forall x, B x)
 
 with tpatt : forall A (B : A -> Type) (t : A), Type := 
 | base : forall {A B t} (x:A) (b : t = x -> Mtac (B x)), Unification -> tpatt A B t
 | tele : forall {A B C t}, (forall (x : C), tpatt A B t) -> tpatt A B t.
+
+Definition array_length : forall {A}, array A -> length :=
+  fun A m => match m with carray _ _ l => l end.
 
 
 Definition tfix1 {A} B := @tfix1' A B Mtac (fun _ x => x).
@@ -322,7 +326,7 @@ Module Array.
     Mtac.array_set a i c.
 
   Definition iter {A} (a : t A) (f : N -> A -> M unit) : M unit :=
-    n <- length a;
+    let n := length a in
     N.iter n (fun i : M N => 
       i' <- i;
       e <- get a i';
@@ -343,7 +347,7 @@ Module Array.
     ret a.
 
   Definition to_list {A} (a : t A) :=
-    n <- length a;
+    let n := length a in
     r <- N.iter n (fun l : M (N * list A)%type => 
       l' <- l;
       let (i, s) := l' in
@@ -353,7 +357,7 @@ Module Array.
     retS (snd r).
 
   Definition copy {A} (a b : t A) :=
-    n <- length a;
+    let n := length a in
     N.iter n (fun i : M N => 
       i' <- i;
       e <- get a i';
