@@ -759,9 +759,9 @@ let rec run' (env, sigma, undo as ctxt) t =
         end
 
       | 20 -> assert_args 0; (* solve_typeclasses *)
-	let evd' = Typeclasses.resolve_typeclasses env sigma in
+	let evd' = Typeclasses.resolve_typeclasses ~fail:false env sigma in
 	return evd' (Lazy.force CoqUnit.mkTT)
-
+	
       | 21 -> assert_args 3; (* new_array *)
 	let ty, n, c = nth 0, nth 1, nth 2 in
 	let a = ArrayRefs.new_array env sigma undo ty n c in
