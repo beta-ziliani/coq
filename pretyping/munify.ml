@@ -29,6 +29,24 @@ let _ = Goptions.declare_bool_option {
   Goptions.optwrite = set_debug 
 }
 
+(*** HACK ***)
+(* Shouldn't be a boolean option! *)
+let stat_unif_problems = ref Big_int.zero_big_int
+let stat_solve_simple_eqn = ref Big_int.zero_big_int
+
+let _ = Goptions.declare_bool_option {
+  Goptions.optsync  = false;
+  Goptions.optdepr  = false;
+  Goptions.optname  = "Print stats";
+  Goptions.optkey   = ["Print";"Stats"];
+  Goptions.optread  = (fun _ -> false);
+  Goptions.optwrite = (fun _ -> 
+    Printf.printf "STATS:\t%s\t\t%s\n" 
+      (Big_int.string_of_big_int !stat_unif_problems) 
+      (Big_int.string_of_big_int !stat_solve_simple_eqn))
+}
+
+
 let evarconv_for_cs = ref true
 let get_evarconv_for_cs = fun _ -> !evarconv_for_cs
 
@@ -545,6 +563,7 @@ and try_solve_simple_eqn dbg ts env sigma evsubs args t =
     match Evarutil.solve_simple_eqn (unify_evar_conv ts) env sigma (None, evsubs, t) with
     | (_, false) -> err sigma
     | (sigma', true) -> Printf.printf "%s" "solve_simple_eqn solved it: ";
+      stat_solve_simple_eqn := Big_int.succ_big_int !stat_solve_simple_eqn;
       debug_eq sigma env (mkEvar evsubs, []) (decompose_app t) dbg;
       success sigma'
   with _ -> 
@@ -927,4 +946,5 @@ and unify ?(conv_t=Reduction.CONV) = unify_constr ~conv_t:conv_t 0
 and swap (a, b) = (b, a) 
 
 and unify_evar_conv ts env sigma0 conv_t t t' =
+  stat_unif_problems := Big_int.succ_big_int !stat_unif_problems;
   swap (unify ~conv_t:conv_t ts env sigma0 t t')
