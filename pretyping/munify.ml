@@ -630,8 +630,9 @@ and compare_heads conv_t dbg ts env sigma0 c c' =
       (* Let-Same *)
       debug_str "Let-Same" dbg;
       let env' = Environ.push_rel (name, Some trm1, ty1) env in
-      unify_constr (dbg+1) ts env sigma0 trm1 trm2 &&= fun sigma1 ->
-      unify_constr ~conv_t (dbg+1) ts env' sigma1 body1 body2
+      unify_constr (dbg+1) ts env sigma0 ty1 ty2 &&= fun sigma1 ->
+      unify_constr (dbg+1) ts env sigma0 trm1 trm2 &&= fun sigma2 ->
+      unify_constr ~conv_t (dbg+1) ts env' sigma2 body1 body2
     ) ||= (fun _ ->
       (* Let-Zeta *)
       debug_str "Let-Zeta" dbg;
@@ -754,18 +755,18 @@ and try_step ?(stuck=NotStucked) dbg conv_t ts env sigma0 (c, l as t) (c', l' as
     unify' ~conv_t (dbg+1) ts env sigma0 (get_def_app_stack env t) t'
 
   | _, Const _ when has_definition ts env c' ->
-    debug_str "Rigid-Delta-ConsR" dbg;
+    debug_str "Delta-ConsR" dbg;
     unify' ~conv_t (dbg+1) ts env sigma0 t (get_def_app_stack env t')
   | Const _, _ when has_definition ts env c ->
-    debug_str "Rigid-Delta-ConsL" dbg;
+    debug_str "Delta-ConsL" dbg;
     unify' ~conv_t (dbg+1) ts env sigma0 (get_def_app_stack env t) t'
 
   (* Lam-EtaR *)
-  | _, Lambda (name, t1, c1) when l' = [] ->
+  | _, Lambda (name, t1, c1) when l' = [] && not (isLambda c) ->
     debug_str "Lam-EtaR" dbg;
     eta_match dbg ts env sigma0 (name, t1, c1) t
   (* Lam-EtaL *)
-  | Lambda (name, t1, c1), _ when l = [] ->
+  | Lambda (name, t1, c1), _ when l = [] && not (isLambda c') ->
     debug_str "Lam-EtaL" dbg;
     eta_match dbg ts env sigma0 (name, t1, c1) t'
 
@@ -894,12 +895,15 @@ and check_product dbg ts env sigma ty (name, a) =
   let idsubst = Array.append [| mkRel 1 |] (id_substitution nc) in
   unify_constr (dbg+1) ts env sigma'' ty (mkProd (Names.Name naid, a, mkEvar(v, idsubst)))
 
-and eta_match dbg ts env sigma0 (name, a, t1) (th, tl as t) =
+and eta_match dbg ts env sigma0 (name, a, t1) (th, tl) =
   let env' = Environ.push_rel (name, None, a) env in
-  let ty = Retyping.get_type_of env sigma0 (applist t) in
   let t' = applist (lift 1 th, List.map (lift 1) tl @ [mkRel 1]) in
+(* It should not be necessary to check the type, but have no proof yet.
+   Anyway, we comment it.
+  let ty = Retyping.get_type_of env sigma0 (applist t) in
   check_product dbg ts env sigma0 ty (name, a) &&= fun sigma1 ->
-  unify_constr (dbg+1) ts env' sigma1 t1 t'
+*)
+  unify_constr (dbg+1) ts env' sigma0 t1 t'
 
 and conv_record dbg trs env evd t t' =
   let (c,bs,(params,params1),(us,us2),(ts,ts1),c1,(n,t2)) = check_conv_record t t' in
