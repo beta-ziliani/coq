@@ -872,16 +872,14 @@ and should_try_fo args (h, args') =
 
 (* ?e a1 a2 = h b1 b2 b3 ---> ?e = h b1 /\ a1 = b2 /\ a2 = b3 *)
 and meta_fo dir dbg ts env sigma (evsubs, args) (h, args') =
-  let rargs = List.rev args in
-  let rargs' = List.rev args' in
-  let le, args = List.hd rargs, List.rev (List.tl rargs) in
-  let le', args' = List.hd rargs', List.rev (List.tl rargs') in
+  let (args'1,args'2) =
+              Util.list_chop (List.length args'-List.length args) args' in
   if dir = Original then 
-    unify_constr (dbg+1) ts env sigma le le' &&= fun sigma' ->
-    unify' (dbg+1) ts env sigma' (mkEvar evsubs, args) (h, args')
+    unify' (dbg+1) ts env sigma (mkEvar evsubs, []) (h, args'1) &&= fun sigma' ->
+    ise_list2 sigma' (unify_constr (dbg+1) ts env) args args'2
   else
-    unify_constr (dbg+1) ts env sigma le' le &&= fun sigma' ->
-    unify' (dbg+1) ts env sigma' (h, args') (mkEvar evsubs, args)
+    unify' (dbg+1) ts env sigma (h, args'1) (mkEvar evsubs, []) &&= fun sigma' ->
+    ise_list2 sigma' (unify_constr (dbg+1) ts env) args'2 args
 
 (* unifies ty with a product type from {name : a} to some Type *)
 and check_product dbg ts env sigma ty (name, a) =
