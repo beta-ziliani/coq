@@ -12,22 +12,36 @@ let set_debug b = debug := b
 let get_debug () = !debug
 
 let _ = Goptions.declare_bool_option {
-  Goptions.optsync = false; Goptions.optdepr = false;
-  Goptions.optname =
-    "";
+  Goptions.optsync = true; 
+  Goptions.optdepr = false;
+  Goptions.optname = "Enable use of new unification algorithm";
   Goptions.optkey = ["Use";"Munify"];
   Goptions.optread = use_munify;
   Goptions.optwrite = set_use_munify;
 }
 
 let _ = Goptions.declare_bool_option {
-  Goptions.optsync  = false;
+  Goptions.optsync  = true;
   Goptions.optdepr  = false;
-  Goptions.optname  = "Munify debug";
+  Goptions.optname  = "Debugging for unification";
   Goptions.optkey   = ["Munify";"Debug"];
   Goptions.optread  = get_debug;
   Goptions.optwrite = set_debug 
 }
+
+let try_solving_eqn = ref true
+let set_solving_eqn b = try_solving_eqn := b
+let get_solving_eqn () = !try_solving_eqn
+
+let _ = Goptions.declare_bool_option {
+  Goptions.optsync  = true;
+  Goptions.optdepr  = false;
+  Goptions.optname  = "Try using original algorithm to solve equations ?x = t";
+  Goptions.optkey   = ["Try"; "Solving";"Eqn"];
+  Goptions.optread  = get_solving_eqn;
+  Goptions.optwrite = set_solving_eqn 
+}
+
 
 (*** HACK ***)
 (* Shouldn't be a boolean option! *)
@@ -558,18 +572,21 @@ and run_and_unify dbg ts env sigma0 args ty =
   | _ -> err sigma0
 
 and try_solve_simple_eqn dbg ts env sigma evsubs args t =
-  try
-    let t = Evarutil.solve_pattern_eqn env args (applist t) in
-    match Evarutil.solve_simple_eqn (unify_evar_conv ts) env sigma (None, evsubs, t) with
-    | (_, false) -> err sigma
-    | (sigma', true) -> Printf.printf "%s" "solve_simple_eqn solved it: ";
-      stat_solve_simple_eqn := Big_int.succ_big_int !stat_solve_simple_eqn;
-      debug_eq sigma env (mkEvar evsubs, []) (decompose_app t) dbg;
-      success sigma'
-  with _ -> 
-    Printf.printf "%s" "solve_simple_eqn failed!";
+  if get_solving_eqn () then
+    try
+      let t = Evarutil.solve_pattern_eqn env args (applist t) in
+      match Evarutil.solve_simple_eqn (unify_evar_conv ts) env sigma (None, evsubs, t) with
+	| (_, false) -> err sigma
+	| (sigma', true) -> Printf.printf "%s" "solve_simple_eqn solved it: ";
+	  stat_solve_simple_eqn := Big_int.succ_big_int !stat_solve_simple_eqn;
+	  debug_eq sigma env (mkEvar evsubs, []) (decompose_app t) dbg;
+	  success sigma'
+    with _ -> 
+      Printf.printf "%s" "solve_simple_eqn failed!";
+      err sigma
+  else
     err sigma
-   
+
 and one_is_meta dbg ts conv_t env sigma0 (c, l as t) (c', l' as t') =
   if isEvar c && isEvar c' then
     let (k1, s1 as e1), (k2, s2 as e2) = destEvar c, destEvar c' in
