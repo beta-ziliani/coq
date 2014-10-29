@@ -843,6 +843,7 @@ and instantiate' dbg ts conv_t env sigma0 (ev, subs as uv) args (h, args') =
       fill_lambdas_invert_types map env sigma0 nc t' subsl args >>= fun (map, t') ->
       let sigma1 = prune_all map sigma0 in
       let t'' = Evd.instantiate_evar nc t' subsl in
+      let t'' = Termops.refresh_universes t'' in
       let ty' = Retyping.get_type_of env sigma1 t'' in
       let ty = Evd.existential_type sigma1 uv in
       let p = unify_constr ~conv_t:Reduction.CUMUL (dbg+1) ts env sigma1 ty' ty &&= fun sigma2 ->
