@@ -717,8 +717,14 @@ and compare_heads conv_t dbg ts env sigma0 c c' =
 
   | _, _ -> err sigma0
 
+and is_reducible ts env (c, l) =
+  (isLambda c && l <> []) ||
+  (isLetIn c) ||
+  ((isRel c || isVar c) && has_definition ts env c)
+
 and try_step ?(stuck=NotStucked) dbg conv_t ts env sigma0 (c, l as t) (c', l' as t') =
   match (kind_of_term c, kind_of_term c') with
+
   (* Lam-BetaR *)
   | _, Lambda (_, _, trm) when l' <> [] ->
     debug_str "Lam-BetaR" dbg;
@@ -753,6 +759,15 @@ and try_step ?(stuck=NotStucked) dbg conv_t ts env sigma0 (c, l as t) (c', l' as
     debug_str "Delta-VarL" dbg;
     unify' ~conv_t (dbg+1) ts env sigma0 (get_def_app_stack env t) t'
 
+(*
+  | _, _ when is_reducible ts env t' ->
+    debug_str "FlexibleR" dbg;
+    unify' ~conv_t (dbg+1) ts env sigma0 t (evar_apprec ts env sigma0 t')
+
+  | _, _ when is_reducible ts env t ->
+    debug_str "FlexibleR" dbg;
+    unify' ~conv_t (dbg+1) ts env sigma0 (evar_apprec ts env sigma0 t) t'
+*)    
   | _, Case _ | _, Fix _ when stuck <> StuckedRight ->
     let t2 = evar_apprec ts env sigma0 t' in
     if t' <> t2 then
@@ -888,9 +903,16 @@ and instantiate ?(dir=Original) dbg ts conv_t env sigma
       begin
         debug_str "Meta-Reduce" dbg;
         let t' = evar_apprec ts env sigma (get_def_app_stack env t) in
-        instantiate dbg ts conv_t env sigma evsubs args t'
+        unify' ~conv_t:conv_t (dbg+1) ts env sigma (mkEvar evsubs, args) t'
       end
-    else err sigma
+    else
+      begin
+        debug_str "Meta-Reduce" dbg;
+        let t' = evar_apprec ts env sigma t in
+	if t <> t' then
+          unify' ~conv_t:conv_t (dbg+1) ts env sigma (mkEvar evsubs, args) t'
+	else err sigma
+      end
   ) ||= (fun _ -> 
     (* if the equation is [?f =?= \x.?f x] the occurs check will fail, but there is a solution: eta expansion *)
     if isLambda h && List.length args' = 0 then
