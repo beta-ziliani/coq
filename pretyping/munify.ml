@@ -907,10 +907,12 @@ and instantiate ?(dir=Original) dbg ts conv_t env sigma
       end
     else
       begin
-        debug_str "Meta-Reduce" dbg;
         let t' = evar_apprec ts env sigma t in
 	if t <> t' then
-          unify' ~conv_t:conv_t (dbg+1) ts env sigma (mkEvar evsubs, args) t'
+          begin
+            debug_str "Meta-Reduce" dbg;
+            unify' ~conv_t:conv_t (dbg+1) ts env sigma (mkEvar evsubs, args) t'
+          end
 	else err sigma
       end
   ) ||= (fun _ -> 
