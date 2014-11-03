@@ -31,7 +31,7 @@ Module ListMtactics.
     
   Program Definition find {A} {B : A -> Type} (x : A) :=
     mfix f (s : list (sigT B)) :=
-      mmatch s with
+      mmatch s return M (B x) with
       | [l r] l ++ r =m> 
         mtry 
           f l
@@ -45,7 +45,7 @@ Module ListMtactics.
 
   Program Definition remove {A} {B : A -> Type} (x : A) :=
     mfix f (s : list (sigT B)) :=
-      mmatch s with
+      mmatch s return M list (sigT B) with
       | [y s'] (existT B x y :: s') =m> ret s'
       | [y s'] (y :: s') =m> r <- f s'; ret (y :: r)
       | _ =m> raise NotFound
