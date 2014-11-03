@@ -9,9 +9,8 @@ Obligation Tactic := idtac.
 (* Coercion eval : M >-> Funclass. *)
 
 (** Tactic to unify two terms [x] and [y]. *)
-Definition unify {A} (x y : A) (P : A -> Type) (f : x = y -> P y) : M (P x) :=
-    a <- mmatch x as x' return M (x = x' -> _) with 
+Program Definition unify {A} (x y : A) (P : A -> Type) (f : x = y -> P y) : M (P x) :=
+    a <- mmatch x as x' return M (x = x' -> P x') with 
            | y => ret (fun H => f H)
          end;
     retS (a (eq_refl _)).
-

@@ -10,14 +10,14 @@ Module ListMtactics.
     exact exception.
   Qed.
 
-  Program
-  Definition inlist {A} (x : A) :=
+
+  Program Definition inlist {A} (x : A) :=
     mfix1 f (s : list A) : M _ :=
       mmatch s as s' return M (In x s') with
       | [l r] l ++ r =m>
-        mtry 
+        mtry
           il <- f l;
-          ret (in_or_app l r x (or_introl il))
+          ret (in_or_app l r x (or_introl il)) 
         with NotFound =>
           ir <- f r;
           ret (in_or_app l r x (or_intror ir))
@@ -29,8 +29,7 @@ Module ListMtactics.
       | _ =m> raise NotFound
       end.
     
-  Program
-  Definition find {A} {B : A -> Type} (x : A) :=
+  Program Definition find {A} {B : A -> Type} (x : A) :=
     mfix f (s : list (sigT B)) :=
       mmatch s with
       | [l r] l ++ r =m> 
@@ -44,8 +43,7 @@ Module ListMtactics.
       | _ =m> raise NotFound
       end.
 
-  Program
-  Definition remove {A} {B : A -> Type} (x : A) :=
+  Program Definition remove {A} {B : A -> Type} (x : A) :=
     mfix f (s : list (sigT B)) :=
       mmatch s with
       | [y s'] (existT B x y :: s') =m> ret s'

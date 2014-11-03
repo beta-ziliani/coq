@@ -282,15 +282,16 @@ Notation "'mfix' f x .. y : 'M' A := b" := (
   )))
   (at level 85, f at level 0, x binder, y binder, only parsing).
 
-
-Notation "'mtry' a 'with' | p1 | .. | pn 'end'" := 
-  (ttry a (fun e=>
-    (tmatch (fun _=>_) e (cons p1%mtac_patt (.. (cons pn%mtac_patt (cons (base e (fun _ =>raise e) UniRed) nil)) ..)))))
-    (at level 82, p1 at level 210, pn at level 210, only parsing).
+Definition type_inside {A} (x : M A) := A.
 
 Notation "'mtry' a 'with' p1 | .. | pn 'end'" := 
   (ttry a (fun e=>
-    (tmatch (fun _=>_) e (cons p1%mtac_patt (.. (cons pn%mtac_patt (cons (base e (fun _ =>raise e) UniRed) nil)) ..)))))
+    (tmatch (fun _=>type_inside a) e (cons p1%mtac_patt (.. (cons pn%mtac_patt (cons (base e (fun _ =>raise e) UniRed) nil)) ..)))))
+    (at level 82, p1 at level 210, pn at level 210, only parsing).
+
+Notation "'mtry' a 'with' | p1 | .. | pn 'end'" := 
+  (ttry a (fun e=>
+    (tmatch (fun _=>type_inside a) e (cons p1%mtac_patt (.. (cons pn%mtac_patt (cons (base e (fun _ =>raise e) UniRed) nil)) ..)))))
     (at level 82, p1 at level 210, pn at level 210, only parsing).
 
 Notation "'mtry' a 'as' e 'in' | p1 | .. | pn 'end'" := 
