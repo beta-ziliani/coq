@@ -29,7 +29,7 @@ let _ = Goptions.declare_bool_option {
   Goptions.optwrite = set_debug 
 }
 
-let try_solving_eqn = ref true
+let try_solving_eqn = ref false
 let set_solving_eqn b = try_solving_eqn := b
 let get_solving_eqn () = !try_solving_eqn
 
