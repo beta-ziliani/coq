@@ -737,12 +737,12 @@ and try_step ?(stuck=NotStucked) dbg conv_t ts env sigma0 (c, l as t) (c', l' as
     unify' ~conv_t (dbg+1) ts env sigma0 t1 t'
 
   (* Let-ZetaR *)
-  | _, LetIn (_, trm, _, body) ->
+  | _, LetIn (_, trm, _, body) when not (isLetIn c) ->
     debug_str "Let-ZetaR" dbg;
     let t2 = (subst1 trm body, l') in
     unify' ~conv_t (dbg+1) ts env sigma0 t t2
   (* Let-ZetaL *)
-  | LetIn (_, trm, _, body), _ ->
+  | LetIn (_, trm, _, body), _ when not (isLetIn c') ->
     debug_str "Let-ZetaL" dbg;
     let t1 = (subst1 trm body, l) in
     unify' ~conv_t (dbg+1) ts env sigma0 t1 t'
