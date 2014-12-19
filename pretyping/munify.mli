@@ -46,7 +46,7 @@ val invert :
   (Names.identifier * 'a * 'b) list ->
   Term.constr ->
   Term.types list ->
-  Term.types list -> (int list Util.Intmap.t * Term.constr) option
+  Term.types list -> Term.existential_key -> (int list Util.Intmap.t * Term.constr) option
 
 val fill_lambdas_invert_types :
   int list Util.Intmap.t ->
@@ -54,7 +54,7 @@ val fill_lambdas_invert_types :
   Evd.evar_map ->
   (Names.identifier * 'a * 'b) list ->
   Term.constr ->
-  Term.types list -> Term.types list -> (int list Util.Intmap.t * Term.constr) option
+  Term.types list -> Term.types list -> Term.existential_key -> (int list Util.Intmap.t * Term.constr) option
 
 type stucked = NotStucked | StuckedLeft | StuckedRight
 

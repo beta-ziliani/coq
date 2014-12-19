@@ -2,7 +2,7 @@ open Term
 open Recordops
 
 let debug = ref false
-let munify_on = ref false
+let munify_on = ref true
 
 let use_munify () = !munify_on
 let set_use_munify b = munify_on := b
@@ -247,7 +247,7 @@ let (-.) n m =
    with ?e instead of the other way round, and this is in fact tried by the
    unification algorithm.
 *)
-let invert map sigma ctx t subs args = 
+let invert map sigma ctx t subs args ev' = 
   let sargs = subs @ args in
   let in_subs j = j < List.length ctx in
   let rmap = ref map in
@@ -268,14 +268,17 @@ let invert map sigma ctx t subs args =
 	  return (mkVar name)
 	else
 	  return (mkRel (List.length sargs - k + i))
-            
+
+      | Evar (ev, evargs) when ev = ev' ->
+        None
+
       | Evar (ev, evargs) ->
 	begin
 	  let f (j : int) c  = 
             match invert' true c i with
               | Some c' -> c'
               | _ -> 
-		if (not inside_evar) && (isVar c || isRel c) then
+		if (not inside_evar) && (isVar c || isRel c || Termops.occur_evar ev' c) then
 		  begin
 		    (if not (Util.Intmap.mem ev !rmap) then
 			rmap := Util.Intmap.add ev [j] !rmap
@@ -340,7 +343,7 @@ let rec prune evd (ev, plist) =
      aswell *)
   let concl = Reductionops.nf_evar evd (Evd.evar_concl evi) in
   let id_env' = Array.to_list (id_substitution env') in
-  match invert Util.Intmap.empty evd env' concl id_env' [] with
+  match invert Util.Intmap.empty evd env' concl id_env' [] ev with
       None -> raise CannotPrune
     | Some (m, concl) ->
       let evd = prune_all m evd in
@@ -390,12 +393,12 @@ let unify_same env sigma ev subs1 subs2 =
    returns [fun x1 : A1{subst}^-1 => .. => fun xn : An{subst}^-1 =>
    body], where each [A_i] is the type of [x_i].
 *)
-let fill_lambdas_invert_types map env sigma nc body subst args =
+let fill_lambdas_invert_types map env sigma nc body subst args ev =
   let rmap = ref map in
   List.fold_right (fun arg r-> r >>= fun (ars, bdy) ->
     let ty = Retyping.get_type_of env sigma arg in
     let ars = Util.list_drop_last ars in
-    invert map sigma nc ty subst ars >>= fun (m, ty) ->
+    invert map sigma nc ty subst ars ev >>= fun (m, ty) ->
     rmap := m;
     return (ars, mkLambda (Names.Anonymous, ty, bdy))) args (return (args, body)) 
   >>= fun (_, bdy) -> return (!rmap, bdy)
@@ -854,8 +857,8 @@ and instantiate' dbg ts conv_t env sigma0 (ev, subs as uv) args (h, args') =
     let nc = Evd.evar_filtered_context evi in
     let res = 
       let subsl = Array.to_list subs in
-      invert Util.Intmap.empty sigma0 nc t subsl args >>= fun (map, t') ->
-      fill_lambdas_invert_types map env sigma0 nc t' subsl args >>= fun (map, t') ->
+      invert Util.Intmap.empty sigma0 nc t subsl args ev >>= fun (map, t') ->
+      fill_lambdas_invert_types map env sigma0 nc t' subsl args ev >>= fun (map, t') ->
       let sigma1 = prune_all map sigma0 in
       let t'' = Evd.instantiate_evar nc t' subsl in
       let t'' = Termops.refresh_universes t'' in
