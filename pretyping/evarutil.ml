@@ -1981,11 +1981,11 @@ let define_pure_evar_as_product evd evk =
   let id = next_ident_away idx (ids_of_named_context (evar_context evi)) in
   let evd1,dom = new_type_evar evd evenv ~filter:(evar_filter evi) in
   let evd2,rng =
-    let newenv = push_named (id, None, dom) evenv in
+(*    let newenv = push_named (id, None, dom) evenv in
+    let filter = true::evar_filter evi in*)
     let src = evar_source evk evd1 in
-    let filter = true::evar_filter evi in
-    new_type_evar evd1 newenv ~src ~filter in
-  let prod = mkProd (Name id, dom, subst_var id rng) in
+    new_type_evar evd1 evenv ~src ~filter:(evar_filter evi) in
+  let prod = mkProd (Name id, dom, rng) in
   let evd3 = Evd.define evk prod evd2 in
   evd3,prod
 
@@ -1996,7 +1996,7 @@ let define_evar_as_product evd (evk,args) =
   (* Quick way to compute the instantiation of evk with args *)
   let na,dom,rng = destProd prod in
   let evdom = mkEvar (fst (destEvar dom), args) in
-  let evrngargs = array_cons (mkRel 1) (Array.map (lift 1) args) in
+  let evrngargs = (*array_cons (mkRel 1)*) (Array.map (lift 1) args) in
   let evrng =  mkEvar (fst (destEvar rng), evrngargs) in
   evd,mkProd (na, evdom, evrng)
 
