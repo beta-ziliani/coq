@@ -31,7 +31,9 @@ Definition case0 P (p: t 0): P p :=
 Definition caseS (P: forall {n}, t (S n) -> Type)
   (P1: forall n, @P n F1) (PS : forall {n} (p: t n), P (FS p))
   {n} (p: t (S n)): P p :=
-  match p with
+  match p as p' in t n return match n as n' return t n' -> Type
+                              with 0 => fun _ => @ID | S n => fun p' => P p' end p'
+  with
   |F1 k => P1 k
   |FS k pp => PS pp
   end.
