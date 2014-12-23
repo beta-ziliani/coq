@@ -3,13 +3,16 @@ open Recordops
 
 let debug = ref false
 let munify_on = ref true
+let aggressive = ref true
 
 let use_munify () = !munify_on
 let set_use_munify b = munify_on := b
 
 let set_debug b = debug := b
-
 let get_debug () = !debug
+
+let is_aggressive () = !aggressive
+let set_aggressive b = aggressive := b
 
 let _ = Goptions.declare_bool_option {
   Goptions.optsync = true; 
@@ -27,6 +30,15 @@ let _ = Goptions.declare_bool_option {
   Goptions.optkey   = ["Munify";"Debug"];
   Goptions.optread  = get_debug;
   Goptions.optwrite = set_debug 
+}
+
+let _ = Goptions.declare_bool_option {
+  Goptions.optsync = true; 
+  Goptions.optdepr = false;
+  Goptions.optname = "Enable more aggressive prunning";
+  Goptions.optkey = ["Aggressive"];
+  Goptions.optread = is_aggressive;
+  Goptions.optwrite = set_aggressive;
 }
 
 let try_solving_eqn = ref false
@@ -260,7 +272,7 @@ let invert map sigma ctx t subs args ev' =
 	  let (name, _, _) = List.nth ctx j in
 	  return (mkVar name)
 	else
-	  return (mkRel (List.length sargs - j))
+	  return (mkRel (List.length sargs - j + i))
       | Rel j when j > i-> 
 	find_unique_rel (j-i) sargs >>= fun k -> 
 	if in_subs k then
@@ -303,23 +315,35 @@ let invert map sigma ctx t subs args ev' =
   (try invert' false t 0 with NotUnique -> None) >>= fun c' ->
   return (!rmap, c')
 
-(** removes the positions in the list *)
-let remove l pos =
-  let rec remove' i l =
-    match l with
-      | [] -> []
-      | (x :: s) -> 
-        if List.mem i pos then
-          remove' (i+1) s
-        else
-          (x :: remove' (i+1) s)
-  in remove' 0 l
-
 let collect_vars =
   let rec aux vars c = match kind_of_term c with
   | Var id -> Names.Idset.add id vars
   | _ -> fold_constr aux vars c in
   aux Names.Idset.empty
+
+let free_vars_intersect tm vars = 
+  Names.Idset.exists (fun v -> List.mem v vars) (collect_vars tm)
+
+let some_or_prop o =
+  match o with
+      None -> mkProp
+    | Some tm -> tm
+
+(** removes the positions in the list, and all dependent elements *)
+let remove l pos =
+  let length = List.length l in
+  let l = List.rev l in
+  let rec remove' i l vs =
+    match l with
+      | [] -> []
+      | ((x, o, t as p) :: s) -> 
+        if List.mem i pos 
+	  || free_vars_intersect t vs 
+	  || free_vars_intersect (some_or_prop o) vs then
+          remove' (i-1) s (x :: vs)
+        else
+          (p :: remove' (i-1) s vs)
+  in List.rev (remove' (length-1) l [])
 
 let free_vars_in tm vars = 
   Names.Idset.for_all (fun v -> List.mem v vars) (collect_vars tm)
@@ -368,8 +392,8 @@ let intersect env sigma s1 s2 =
       else
         if (isVar s1.(i) || isRel s1.(i)) &&  (isVar s2.(i) || isRel s2.(i)) then
           Some (i :: l) (* both position holds variables: they are indeed different *)
-        else
-          None
+        else if is_aggressive () then Some (i :: l)
+	else None
     else Some []
   in 
   assert (Array.length s2 = n) ;
@@ -498,6 +522,28 @@ let evar_apprec ts env sigma (c, stack) =
 	  aux (Evd.existential_value sigma ev, stack)
       | _ -> (t, Reductionops.list_of_stack stack)
   in aux (c, Reductionops.append_stack_list stack Reductionops.empty_stack)
+
+let array_mem_to_i e i a =
+  let j = ref 0 in
+  let b = ref false in
+  while !j < i && not !b do 
+    if a.(!j) = e then
+      b := true
+    else
+      j := !j+1
+  done;
+  !b
+
+let remove_non_var env sigma (ev, subs as evsubs) args =
+  let length = Array.length subs in
+  let (_, ps) = Array.fold_right (fun a (i, s) -> 
+    if isVarOrRel a && not (array_mem_to_i a i subs || List.mem a args) then (i-1,s)
+    else (i-1, i::s)) subs (length-1, [])  in
+  if ps = [] then raise CannotPrune
+  else
+    let sigma' = prune sigma (ev, ps) in
+    (sigma', Reductionops.nf_evar sigma' (mkEvar evsubs), args)
+
 
 exception InternalException
 
@@ -888,6 +934,17 @@ and instantiate ?(dir=Original) dbg ts conv_t env sigma
         (* Meta-InstL *)
         debug_str "Meta-Inst" dbg;
         try instantiate' dbg ts conv_t env sigma evsubs args t
+        with CannotPrune -> err sigma
+      end
+    else err sigma
+  ) ||= (fun _ ->
+    if is_aggressive () then
+      begin
+        (* Meta-Prune *)
+        debug_str "Meta-Prune" dbg;
+        try 
+	  let (sigma', evsubs', args'') = remove_non_var env sigma evsubs args in
+	  unify' ~conv_t:conv_t dbg ts env sigma' (evsubs', args'') t
         with CannotPrune -> err sigma
       end
     else err sigma

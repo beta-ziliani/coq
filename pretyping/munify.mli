@@ -142,3 +142,9 @@ val is_stuck : Names.transparent_state -> Environ.env -> Evd.evar_map ->
 val prune : Evd.evar_map -> Evd.evar * int list -> Evd.evar_map
 
 val free_vars_in : Term.constr -> Names.Idset.elt list -> bool
+
+val remove : (Names.Idset.elt * Term.types option * Term.types) list ->
+           int list ->
+           (Names.Idset.elt * Term.types option * Term.types) list
+
+val free_vars_intersect : Term.types -> Names.Idset.elt list -> bool
