@@ -27,7 +27,7 @@ Definition case0 P (p: t 0): P p :=
     match n as n' return t n' -> Type
   with |0 => fun f0 => P f0 |S _ => fun _ => @ID end p'
   with |F1 _ => @id |FS _ _ => @id end.
-
+Unset Use Munify.
 Definition caseS (P: forall {n}, t (S n) -> Type)
   (P1: forall n, @P n F1) (PS : forall {n} (p: t n), P (FS p))
   {n} (p: t (S n)): P p :=
@@ -158,6 +158,8 @@ Defined.
 [fin (n + m)] *)
 Fixpoint R {m} n (p : t m) : t (n + m) :=
   match n with |0 => p |S n' => FS (R n' p) end.
+
+Set use Munify.
 
 Lemma R_sanity {m} n (p : t m) : proj1_sig (to_nat (R n p)) = n + proj1_sig (to_nat p).
 Proof.

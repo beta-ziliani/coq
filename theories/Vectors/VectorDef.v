@@ -34,7 +34,7 @@ Local Notation "h :: t" := (cons _ h _ t) (at level 60, right associativity).
 Section SCHEMES.
 
 (** An induction scheme for non-empty vectors *)
-
+Unset Use Munify.
 Definition rectS {A} (P:forall {n}, t A (S n) -> Type)
  (bas: forall a: A, P (a :: []))
  (rect: forall a {n} (v: t A (S n)), P v -> P (a :: v)) :=
@@ -89,6 +89,7 @@ match v as v' in t _ m return match m, v' with |0, _ => False -> True |S _, v0 =
   |[] => fun devil => False_rect _ devil (* subterm !!! *)
   |h :: t => H h t
 end.
+Set Use Munify.
 End SCHEMES.
 
 Section BASES.
@@ -124,12 +125,14 @@ Definition nth_order {A} {n} (v: t A n) {p} (H: p < n) :=
 (nth v (Fin.of_nat_lt H)).
 
 (** Put [a] at the p{^ th} place of [v] *)
+Unset Use Munify.
 Fixpoint replace {A n} (v : t A n) (p: Fin.t n) (a : A) {struct p}: t A n :=
   match p with
   |Fin.F1 k => fun v': t A (S k) => caseS (fun n _ => t A (S n)) (fun h _ t => a :: t) v'
   |Fin.FS k p' => fun v' =>
     (caseS (fun n _ => Fin.t n -> t A (S n)) (fun h _ t p2 => h :: (replace t p2 a)) v') p'
   end v.
+Set Use Munify.
 
 (** Version of replace with [lt] *)
 Definition replace_order {A n} (v: t A n) {p} (H: p < n) :=

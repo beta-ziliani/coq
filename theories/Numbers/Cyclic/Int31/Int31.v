@@ -74,7 +74,7 @@ Definition Twon : int31 := Eval compute in (napply_cst _ _ D0 (size-2) I31) D1 D
 *)
 
 Definition sneakr : digits -> int31 -> int31 := Eval compute in
- fun b => int31_rect _ (napply_except_last _ _ (size-1) (I31 b)).
+ fun b => int31_rect (fun _ =>int31) (napply_except_last _ _ (size-1) (I31 b)).
 
 (** [sneakl b x] shifts [x] to the left by one bit.
    Leftmost digit is lost while rightmost digit becomes [b].
@@ -83,7 +83,7 @@ Definition sneakr : digits -> int31 -> int31 := Eval compute in
 *)
 
 Definition sneakl : digits -> int31 -> int31 := Eval compute in
- fun b => int31_rect _ (fun _ => napply_then_last _ _ b (size-1) I31).
+ fun b => int31_rect (fun _ =>int31) (fun _ => napply_then_last _ _ b (size-1) I31).
 
 
 (** [shiftl], [shiftr], [twice] and [twice_plus_one] are direct
@@ -98,20 +98,20 @@ Definition twice_plus_one := sneakl D1.
     Pseudo-code is [ match x with (I31 d0 ... dN) => d0 end ] *)
 
 Definition firstl : int31 -> digits := Eval compute in
- int31_rect _ (fun d => napply_discard _ _ d (size-1)).
+ int31_rect (fun _ =>_) (fun d => napply_discard _ _ d (size-1)).
 
 (** [firstr x] returns the rightmost digit of number [x].
     Pseudo-code is [ match x with (I31 d0 ... dN) => dN end ] *)
 
 Definition firstr : int31 -> digits := Eval compute in
- int31_rect _ (napply_discard _ _ (fun d=>d) (size-1)).
+ int31_rect (fun _ => _) (napply_discard _ _ (fun d=>d) (size-1)).
 
 (** [iszero x] is true iff [x = I31 D0 ... D0]. Pseudo-code is
     [ match x with (I31 D0 ... D0) => true | _ => false end ] *)
 
 Definition iszero : int31 -> bool := Eval compute in
  let f d b := match d with D0 => b | D1 => false end
- in int31_rect _ (nfold_bis _ _ f true size).
+ in int31_rect (fun _ => _) (nfold_bis _ _ f true size).
 
 (* NB: DO NOT transform the above match in a nicer (if then else).
    It seems to work, but later "unfold iszero" takes forever. *)

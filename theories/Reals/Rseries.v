@@ -182,7 +182,7 @@ Section sequence.
 
     assert (Hs0: forall n, sum n = 0).
     intros n.
-    specialize (Hm1 (sum n) (ex_intro _ _ (eq_refl _))).
+    specialize (Hm1 (sum n) (ex_intro (fun x=>sum n = sum x) _ (eq_refl _))).
     apply Rle_antisym with (2 := proj1 (Hsum n)).
     now rewrite <- Hm.
 
