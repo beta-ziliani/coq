@@ -637,6 +637,10 @@ and try_solve_simple_eqn dbg ts env sigma evsubs args t =
     err sigma
 
 and one_is_meta dbg ts conv_t env sigma0 (c, l as t) (c', l' as t') =
+  (* first we instantiate all defined metas *)
+  let nf_map = List.map (fun a->Reductionops.nf_evar sigma0 a) in
+  let (c, l) = (Reductionops.nf_evar sigma0 c, nf_map l) in 
+  let (c', l') = (Reductionops.nf_evar sigma0 c', nf_map l') in
   if isEvar c && isEvar c' then
     let (k1, s1 as e1), (k2, s2 as e2) = destEvar c, destEvar c' in
     if k1 = k2 then
