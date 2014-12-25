@@ -203,11 +203,11 @@ GEXTEND Gram
 	  CGeneralization (loc, Implicit, None, c)
       | "`("; c = operconstr LEVEL "200"; ")" ->
 	  CGeneralization (loc, Explicit, None, c)
-      | run(*BETA*); c = operconstr LEVEL "200" -> CRun (loc, c)
+      | "mtacrun"(*BETA*); c = operconstr LEVEL "200" -> CRun (loc, c)
       ] ]
   ;
-  run: (*BETA*)
-    [ [ "run" -> () ] ]
+  mtacrun: (*BETA*)
+    [ [ "mtacrun" -> () ] ]
   ;
   forall:
     [ [ "forall" -> () ] ]
