@@ -337,16 +337,22 @@ Module Array.
       (ret 0%N);;
     ret tt.
 
+  Definition No0LengthArray : Exception. exact exception. Qed.
+
   Definition init {A} n (f : N -> M A) : M (t A) :=
-    c <- f 0%N;
-    a <- make n c;
-    N.iter (N.pred n) (fun i : M N => 
-      i' <- i;
-      e <- f i';
-      set a i' e;;
-      retS (N.succ i'))
-      (ret 1%N);;
-    ret a.
+    match n with 
+    | N0 => raise No0LengthArray
+    | _ => 
+      c <- f 0%N;
+        a <- make n c;
+        N.iter (N.pred n) (fun i : M N => 
+            i' <- i;
+            e <- f i';
+            set a i' e;;
+            retS (N.succ i'))
+          (ret 1%N);;
+        ret a
+    end.
 
   Definition to_list {A} (a : t A) :=
     let n := length a in
