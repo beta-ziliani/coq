@@ -799,7 +799,7 @@ and try_step ?(stuck=NotStucked) dbg conv_t ts env sigma0 (c, l as t) (c', l' as
     debug_str "Let-ZetaL" dbg;
     let t1 = (subst1 trm body, l) in
     unify' ~conv_t (dbg+1) ts env sigma0 t1 t'
-
+(*
   (* Var-DeltaR *)
   | _, Rel _ 
   | _, Var _ when has_definition ts env c' ->
@@ -811,7 +811,7 @@ and try_step ?(stuck=NotStucked) dbg conv_t ts env sigma0 (c, l as t) (c', l' as
   | Var _, _ when has_definition ts env c ->
     debug_str "Delta-VarL" dbg;
     unify' ~conv_t (dbg+1) ts env sigma0 (get_def_app_stack env t) t'
-
+*)
 (*
   | _, _ when is_reducible ts env t' ->
     debug_str "FlexibleR" dbg;
@@ -844,7 +844,9 @@ and try_step ?(stuck=NotStucked) dbg conv_t ts env sigma0 (c, l as t) (c', l' as
     else err sigma0
 
   (* Constants get unfolded after everything else *)
-  | _, Const _ when has_definition ts env c' && stuck = NotStucked ->
+  | _, Const _
+  | _, Rel _
+  | _, Var _ when has_definition ts env c' && stuck = NotStucked ->
       if is_stuck ts env sigma0 t' then
 	try_step ~stuck:StuckedRight dbg conv_t ts env sigma0 t t'
       else 
@@ -852,14 +854,20 @@ and try_step ?(stuck=NotStucked) dbg conv_t ts env sigma0 (c, l as t) (c', l' as
 	  debug_str "Cons-DeltaNotStuckR" dbg;
 	  unify' ~conv_t (dbg+1) ts env sigma0 t (evar_apprec ts env sigma0 (get_def_app_stack env t'))
 	end
-  | Const _, _ when has_definition ts env c && stuck = StuckedRight ->
+  | Const _, _ 
+  | Rel _, _ 
+  | Var _, _  when has_definition ts env c && stuck = StuckedRight ->
     debug_str "Cons-DeltaStuckL" dbg;
     unify' ~conv_t (dbg+1) ts env sigma0 (evar_apprec ts env sigma0 (get_def_app_stack env t)) t'
 
-  | _, Const _ when has_definition ts env c' ->
+  | _, Const _ 
+  | _, Rel _
+  | _, Var _ when has_definition ts env c' ->
     debug_str "Cons-DeltaR" dbg;
     unify' ~conv_t (dbg+1) ts env sigma0 t (evar_apprec ts env sigma0 (get_def_app_stack env t'))
-  | Const _, _ when has_definition ts env c ->
+  | Const _, _
+  | Rel _, _ 
+  | Var _, _  when has_definition ts env c ->
     debug_str "Cons-DeltaL" dbg;
     unify' ~conv_t (dbg+1) ts env sigma0 (evar_apprec ts env sigma0 (get_def_app_stack env t)) t'
 
