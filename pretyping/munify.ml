@@ -783,22 +783,44 @@ and try_step ?(stuck=NotStucked) dbg conv_t ts env sigma0 (c, l as t) (c', l' as
     debug_str "Lam-BetaR" dbg;
     let t2 = (subst1 (List.hd l') trm, List.tl l') in
     unify' ~conv_t (dbg+1) ts env sigma0 t t2 
-  (* Lam-BetaL *)
-  | Lambda (_, _, trm), _ when l <> [] ->
-    debug_str "Lam-BetaL" dbg;
-    let t1 = (subst1 (List.hd l) trm, List.tl l) in
-    unify' ~conv_t (dbg+1) ts env sigma0 t1 t'
-
   (* Let-ZetaR *)
   | _, LetIn (_, trm, _, body) when not (isLetIn c) ->
     debug_str "Let-ZetaR" dbg;
     let t2 = (subst1 trm body, l') in
     unify' ~conv_t (dbg+1) ts env sigma0 t t2
+
+  | _, Case _ | _, Fix _ when stuck <> StuckedRight ->
+    let t2 = evar_apprec ts env sigma0 t' in
+    if t' <> t2 then
+      begin
+	debug_str "IotaR" dbg;
+	unify' ~conv_t (dbg+1) ts env sigma0 t t2
+      end
+    else if stuck = NotStucked then
+      try_step ~stuck:StuckedRight dbg conv_t ts env sigma0 t t'
+    else err sigma0
+
+  (* Lam-BetaL *)
+  | Lambda (_, _, trm), _ when l <> [] ->
+    debug_str "Lam-BetaL" dbg;
+    let t1 = (subst1 (List.hd l) trm, List.tl l) in
+    unify' ~conv_t (dbg+1) ts env sigma0 t1 t'
   (* Let-ZetaL *)
   | LetIn (_, trm, _, body), _ when not (isLetIn c') ->
     debug_str "Let-ZetaL" dbg;
     let t1 = (subst1 trm body, l) in
     unify' ~conv_t (dbg+1) ts env sigma0 t1 t'
+
+  | Case _, _ | Fix _, _ when stuck <> StuckedLeft ->
+    let t2 = evar_apprec ts env sigma0 t in
+    if t <> t2 then
+      begin
+	debug_str "IotaL" dbg;
+	unify' ~conv_t (dbg+1) ts env sigma0 t2 t'
+      end
+    else if stuck = NotStucked then
+      try_step ~stuck:StuckedLeft dbg conv_t ts env sigma0 t t'
+    else err sigma0
 (*
   (* Var-DeltaR *)
   | _, Rel _ 
@@ -821,27 +843,6 @@ and try_step ?(stuck=NotStucked) dbg conv_t ts env sigma0 (c, l as t) (c', l' as
     debug_str "FlexibleR" dbg;
     unify' ~conv_t (dbg+1) ts env sigma0 (evar_apprec ts env sigma0 t) t'
 *)    
-  | _, Case _ | _, Fix _ when stuck <> StuckedRight ->
-    let t2 = evar_apprec ts env sigma0 t' in
-    if t' <> t2 then
-      begin
-	debug_str "IotaR" dbg;
-	unify' ~conv_t (dbg+1) ts env sigma0 t t2
-      end
-    else if stuck = NotStucked then
-      try_step ~stuck:StuckedRight dbg conv_t ts env sigma0 t t'
-    else err sigma0
-
-  | Case _, _ | Fix _, _ when stuck <> StuckedLeft ->
-    let t2 = evar_apprec ts env sigma0 t in
-    if t <> t2 then
-      begin
-	debug_str "IotaL" dbg;
-	unify' ~conv_t (dbg+1) ts env sigma0 t2 t'
-      end
-    else if stuck = NotStucked then
-      try_step ~stuck:StuckedLeft dbg conv_t ts env sigma0 t t'
-    else err sigma0
 
   (* Constants get unfolded after everything else *)
   | _, Const _
