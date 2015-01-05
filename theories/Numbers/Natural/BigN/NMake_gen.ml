@@ -114,7 +114,7 @@ pr
  Lemma make_op_omake: forall n, make_op n = omake_op n.
  Proof.
  intros n; unfold make_op, make_op_list.
- refine (dmemo_get_correct _ _ _).
+ refine (dmemo_get_correct (fun n=> ZnZ.Ops (_ _ (S n))) _ _).
  Qed.
 
  Theorem make_op_S: forall n,
