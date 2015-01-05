@@ -869,8 +869,8 @@ for i = 0 to size do
 pr "  Let fn%i := fg %i." i i;
 done;
 
-pr "  Let f' := switch _ %s f." (iter_name 0 size "f" "");
-pr "  Let fg' := switch _ %s fg." (iter_name 0 size "fn" "");
+pr "  Let f' := switch (fun n=>dom_t n -> dom_t n -> res) %s f." (iter_name 0 size "f" "");
+pr "  Let fg' := switch (fun n=>forall m, word (dom_t n) (S m) -> dom_t n -> res) %s fg." (iter_name 0 size "fn" "");
 
 pr
 "  Local Notation iter_sym_folded :=
