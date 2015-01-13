@@ -2,7 +2,7 @@ open Term
 open Recordops
 
 let debug = ref false
-let munify_on = ref true
+let munify_on = ref false
 let aggressive = ref true
 
 let use_munify () = !munify_on
