@@ -79,6 +79,7 @@ Qed.
 (* Somewhat trivial definition, but not unfolded automatically hence we can match on [match_eq ?A ?B ?x ?f]
    in tactics. *)
 
+Set Use Munify.
 Program Definition match_eq (A B : Type) (x : A) (fn : forall (y : A | y = x), B) : B :=
   fn (exist _ x (eq_refl B)).
 

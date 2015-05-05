@@ -488,6 +488,16 @@ let is_lift c =
   try eq_constr c (Lazy.force !lift_constr)
   with Not_found -> false
 
+let run_cs = ref (lazy (mkProp,mkProp))
+let set_run_cs c = run_cs := c
+
+let is_run_proj c = 
+  try eq_constr c (fst (Lazy.force !run_cs))
+  with Not_found -> false
+
+let is_run_cst c = 
+  try eq_constr c (snd (Lazy.force !run_cs))
+  with Not_found -> false
 
 let rec pad l = if l <= 0 then () else (Printf.printf "_"; pad (l-1))
 
@@ -616,9 +626,20 @@ and unify_constr ?(conv_t=Reduction.CONV) dbg ts env sigma0 t t' =
 and run_and_unify dbg ts env sigma0 args ty =
   let a, f, v = List.nth args 0, List.nth args 1, List.nth args 2 in
   unify' ~conv_t:Reduction.CUMUL (dbg+1) ts env sigma0 (decompose_app a) ty &&= fun sigma1 ->
+  print_bar dbg;
+  pad dbg;
+  Printf.printf "Running: ";
+  Pp.msg (Termops.print_constr_env env (Evarutil.nf_evar sigma1 f));
+  Printf.printf "\n";
   match !run_function env sigma1 f with
-  | Some (sigma2, v') -> unify' (dbg+1) ts env sigma2 (decompose_app v) (decompose_app v')
-  | _ -> err sigma0
+  | Some (sigma2, v') -> 
+    print_bar dbg;
+    pad dbg;
+    Printf.printf "Resulted in: ";
+    Pp.msg (Termops.print_constr_env env (Evarutil.nf_evar sigma2 v));
+    Printf.printf "\n";    
+    unify' (dbg+1) ts env sigma2 (decompose_app v) (decompose_app v')
+  | _ -> debug_str "Failed" dbg; err sigma0
 
 and try_solve_simple_eqn dbg ts env sigma evsubs args t =
   if get_solving_eqn () then
@@ -1047,7 +1068,27 @@ and conv_record dbg trs env evd t t' =
   ise_list2 evd' (fun i x1 x -> unify_constr (dbg+1) trs env i x1 (substl ks x))
     params1 params &&= fun i ->
   ise_list2 i (fun i u1 u -> unify_constr (dbg+1) trs env i u1 (substl ks u))
-    us2 us &&= fun i -> 
+    us2 us &&= (fun i -> 
+  if is_run_cst c then
+    begin
+      let f = mkApp(List.nth params1 2,[|t2|]) in
+      print_bar dbg;
+      pad dbg;
+      Printf.printf "Running: ";
+      Pp.msg (Termops.print_constr_env env (Evarutil.nf_evar i f));
+      Printf.printf "\n";
+      match !run_function env i f with
+	| Some (i, v) -> 
+	  print_bar dbg;
+	  pad dbg;
+	  Printf.printf "Resulted in: ";
+	  Pp.msg (Termops.print_constr_env env (Evarutil.nf_evar i v));
+	  Printf.printf "\n";
+	  unify_constr (dbg+1) trs env i v (List.nth ks 0)
+	| _ -> debug_str "Failed" dbg; err i
+    end
+  else
+    success i) &&= fun i ->
   unify' (dbg+1) trs env i (decompose_app c1) (c,(List.rev ks)) &&= fun i ->
   ise_list2 i (unify_constr (dbg+1) trs env) ts ts1
 

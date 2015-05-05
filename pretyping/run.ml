@@ -904,3 +904,5 @@ let munify_run env evd f =
 
 let _ = Munify.set_run munify_run
 let _ = Munify.set_lift_constr (MtacNames.mkLazyConstr "lift")
+let _ = Munify.set_run_cs (lazy (MtacNames.mkConstr "value", 
+			         MtacNames.mkConstr "exec_def"))

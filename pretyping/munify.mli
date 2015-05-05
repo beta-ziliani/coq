@@ -14,6 +14,8 @@ val set_run : (Environ.env -> Evd.evar_map -> Term.constr ->
 
 val set_lift_constr : constr Lazy.t -> unit
 
+val set_run_cs : (constr * constr) Lazy.t -> unit
+
 
 val use_munify : unit -> bool
 

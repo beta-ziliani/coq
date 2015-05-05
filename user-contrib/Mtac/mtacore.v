@@ -139,6 +139,18 @@ Hint Extern 20 (runner ?f) => (exact (Build_runner f (mtacrun f)))  : typeclass_
 
 Definition lift {A} (f : Mtac A) (v : A) := A.
 
+Structure execV {A P} (f : forall x: A, Mtac (P x)) := 
+  ExecV { value : A; _ : P value}.
+
+Canonical Structure exec_def A P f v r := @ExecV A P f v r.
+
+Definition result A P (f : forall x:A, Mtac (P x)) (e : execV f) : P (value _ e) :=
+  match e with
+  | ExecV _ r => r
+  end.
+Arguments value {A} {P} f e.
+Arguments result {A} {P} {f} e.
+
 End Mtac.
 
 Export Mtac.  
