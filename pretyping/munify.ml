@@ -2,8 +2,10 @@ open Term
 open Recordops
 
 let debug = ref false
-let munify_on = ref false
+let munify_on = ref true
 let aggressive = ref true
+let hash = ref false
+let try_solving_eqn = ref false
 
 let use_munify () = !munify_on
 let set_use_munify b = munify_on := b
@@ -13,6 +15,12 @@ let get_debug () = !debug
 
 let is_aggressive () = !aggressive
 let set_aggressive b = aggressive := b
+
+let set_hash b = hash := b
+let use_hash () = !hash
+
+let set_solving_eqn b = try_solving_eqn := b
+let get_solving_eqn () = !try_solving_eqn
 
 let _ = Goptions.declare_bool_option {
   Goptions.optsync = true; 
@@ -41,9 +49,14 @@ let _ = Goptions.declare_bool_option {
   Goptions.optwrite = set_aggressive;
 }
 
-let try_solving_eqn = ref false
-let set_solving_eqn b = try_solving_eqn := b
-let get_solving_eqn () = !try_solving_eqn
+let _ = Goptions.declare_bool_option {
+  Goptions.optsync = true; 
+  Goptions.optdepr = false;
+  Goptions.optname = "Use a hash table of failures";
+  Goptions.optkey = ["Use";"Hash"];
+  Goptions.optread = use_hash;
+  Goptions.optwrite = set_hash;
+}
 
 let _ = Goptions.declare_bool_option {
   Goptions.optsync  = true;
@@ -557,6 +570,10 @@ let remove_non_var env sigma (ev, subs as evsubs) args =
 
 exception InternalException
 
+let tbl = Hashtbl.create 1000
+
+let tblfind t x = try Hashtbl.find t x with Not_found -> false
+
 (* pre: c and c' are in whdnf with our definition of whd *)
 let rec unify' ?(conv_t=Reduction.CONV) dbg ts env sigma0 (c, l) (c', l') =
   let (c, l1) = decompose_app (Evarutil.whd_head_evar sigma0 c) in
@@ -568,7 +585,9 @@ let rec unify' ?(conv_t=Reduction.CONV) dbg ts env sigma0 (c, l) (c', l') =
     if Evarutil.is_ground_term sigma0 (applist t) && Evarutil.is_ground_term sigma0 (applist t') 
       && Reductionops.is_trans_fconv conv_t ts env sigma0 (applist t) (applist t') 
     then begin debug_str "Reduce-Same" dbg; success sigma0 end
-    else begin
+    else if use_hash () && tblfind tbl (sigma0, env, (c,l),(c',l')) then begin
+      debug_str "Hash-Hit" dbg;
+      err sigma0 end else begin
   match (kind_of_term c, kind_of_term c') with
   | Evar _, _ 
   | _, Evar _ ->
@@ -616,8 +635,10 @@ let rec unify' ?(conv_t=Reduction.CONV) dbg ts env sigma0 (c, l) (c', l') =
   in
   if is_success res then 
     debug_str "ok" dbg
-  else
-    debug_str "err" dbg;
+  else begin
+    if use_hash () then Hashtbl.add tbl (sigma0, env, (c, l), (c',l')) true else ();
+    debug_str "err" dbg
+  end;
   res
 
 and unify_constr ?(conv_t=Reduction.CONV) dbg ts env sigma0 t t' =
@@ -1098,4 +1119,5 @@ and swap (a, b) = (b, a)
 
 and unify_evar_conv ts env sigma0 conv_t t t' =
   stat_unif_problems := Big_int.succ_big_int !stat_unif_problems;
+  Hashtbl.clear tbl;
   swap (unify ~conv_t:conv_t ts env sigma0 t t')
