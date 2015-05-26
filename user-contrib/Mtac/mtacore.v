@@ -27,6 +27,8 @@ Definition ArrayOutOfBounds : Exception.
   exact exception.
 Qed.
 
+Record dyn := Dyn { type : Type; elem : type }.
+
 Definition index := N.
 Definition length := N.
 
@@ -49,6 +51,17 @@ Inductive Unification : Type :=
 | UniSimpl : Unification
 | UniMuni : Unification.
 
+Inductive Hyp : Type :=
+| ahyp : forall {A}, A -> option A -> Hyp.
+
+Record Case :=
+    mkCase {
+        case_ind : Type;
+        case_val : case_ind;
+        case_type : Type;
+        case_return : dyn;
+        case_branches : list dyn
+        }.
 
 Inductive Mtac : Type -> Prop :=
 | tret : forall {A}, Reduction -> A -> Mtac A
@@ -99,6 +112,11 @@ Inductive Mtac : Type -> Prop :=
 | array_get : forall {A}, array A -> N -> Mtac A
 | array_set : forall {A}, array A -> N -> A -> Mtac unit
 | print_term : forall {A}, A -> Mtac unit 
+| hypotheses : Mtac (list Hyp)
+
+| destcase : forall {A} (a : A), Mtac (Case)
+| constrs : forall {A : Type} (a : A), Mtac (list dyn)
+| makecase : forall (C : Case), Mtac dyn
 
 with tpatt : forall A (B : A -> Type) (t : A), Type := 
 | base : forall {A B t} (x:A) (b : t = x -> Mtac (B x)), Unification -> tpatt A B t
@@ -226,28 +244,26 @@ Notation "'nu' x .. y , a" := (tnu (fun x=>.. (tnu (fun y=> a))..))
 (at level 81, x binder, y binder, right associativity). 
 
       
-Record dynamic := { type : Type; elem : type }.
-
 Definition MFixException (s : string) : Exception.
   exact exception.
 Qed.
 
 Program
-Definition mk_rec (Ty : Prop) (b : Ty) : M dynamic :=
+Definition mk_rec (Ty : Prop) (b : Ty) : M dyn :=
   mmatch Ty as Ty' return M _ with
   | [A B] (forall x:A, M (B x)) -> forall x:A, M (B x) =c> [H]
-    retS (Build_dynamic _ (tfix1 B (eq_ind _ id b _ H)))
+    retS (Dyn _ (tfix1 B (eq_ind _ id b _ H)))
   | [A B C] (forall (x:A) (y : B x), M (C x y)) -> forall (x:A) (y : B x), M (C x y) =c>[H] 
-    retS (Build_dynamic _ (tfix2 C (eq_ind _ id b _ H)))
+    retS (Dyn _ (tfix2 C (eq_ind _ id b _ H)))
   | [A1 A2 A3 B] (forall (x1:A1) (x2:A2 x1) (x3:A3 x1 x2), M (B x1 x2 x3)) 
     -> forall (x1:A1) (x2:A2 x1) (x3:A3 x1 x2), M (B x1 x2 x3) =c> [H]
-    retS (Build_dynamic _ (tfix3 B (eq_ind _ id b _ H)))
+    retS (Dyn _ (tfix3 B (eq_ind _ id b _ H)))
   | [A1 A2 A3 A4 B] (forall (x1:A1) (x2:A2 x1) (x3:A3 x1 x2) (x4:A4 x1 x2 x3), M (B x1 x2 x3 x4)) 
     -> forall (x1:A1) (x2:A2 x1) (x3:A3 x1 x2) (x4:A4 x1 x2 x3), M (B x1 x2 x3 x4) =c> [H]
-    retS (Build_dynamic _ (tfix4 B (eq_ind _ id b _ H)))
+    retS (Dyn _ (tfix4 B (eq_ind _ id b _ H)))
   | [A1 A2 A3 A4 A5 B] (forall (x1:A1) (x2:A2 x1) (x3:A3 x1 x2) (x4:A4 x1 x2 x3) (x5:A5 x1 x2 x3 x4), M (B x1 x2 x3 x4 x5)) 
     -> forall (x1:A1) (x2:A2 x1) (x3:A3 x1 x2) (x4:A4 x1 x2 x3) (x5:A5 x1 x2 x3 x4), M (B x1 x2 x3 x4 x5) =c> [H]
-    retS (Build_dynamic _ (tfix5 B (eq_ind _ id b _ H)))
+    retS (Dyn _ (tfix5 B (eq_ind _ id b _ H)))
   | _ => raise (MFixException "Cannot typecheck the fixpoint. Perhaps you provided more than 5 arguments? If not, you can try providing the type to the fixpoint.")
   end.
 

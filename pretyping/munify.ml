@@ -499,18 +499,18 @@ let set_lift_constr c = lift_constr := c
 
 let is_lift c = 
   try eq_constr c (Lazy.force !lift_constr)
-  with Not_found -> false
+  with _ -> false
 
 let run_cs = ref (lazy (mkProp,mkProp))
 let set_run_cs c = run_cs := c
 
 let is_run_proj c = 
   try eq_constr c (fst (Lazy.force !run_cs))
-  with Not_found -> false
+  with _ -> false
 
 let is_run_cst c = 
   try eq_constr c (snd (Lazy.force !run_cs))
-  with Not_found -> false
+  with _ -> false
 
 let rec pad l = if l <= 0 then () else (Printf.printf "_"; pad (l-1))
 

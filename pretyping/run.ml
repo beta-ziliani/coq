@@ -19,9 +19,22 @@ open Munify
 let reduce_value = Tacred.compute
 
 module Constr = struct
-  let mkConstr name = lazy (constr_of_global (Nametab.global_of_path (path_of_string name)))
+  exception Constr_not_found of string
+
+  let mkConstr name = lazy (
+     try constr_of_global (Nametab.global_of_path (path_of_string name))
+     with Not_found -> raise (Constr_not_found name)
+  )
 
   let isConstr = fun r c -> eq_constr (Lazy.force r) c
+end
+
+module CoqOption = struct
+  let mkNone ty = 
+    mkApp (Lazy.force (Constr.mkConstr "Coq.Init.Datatypes.None"), [|ty|])
+  let mkSome ty t =
+    mkApp (Lazy.force (Constr.mkConstr "Coq.Init.Datatypes.Some"), [|ty; t|])
+
 end
 
 module MtacNames = struct
@@ -37,6 +50,14 @@ module MtacNames = struct
   let isBase = Constr.isConstr mkBase
   let isTele = Constr.isConstr mkTele
 
+
+  let mkAHyp ty n t = 
+    let t = match t with
+      | None -> CoqOption.mkNone ty
+      | Some t -> CoqOption.mkSome ty t
+    in Term.mkApp (mkConstr "ahyp", [|ty; n; t|])
+
+  let mkHypType = mkLazyConstr "Hyp"
 end
 
 module Exceptions = struct
@@ -150,8 +171,24 @@ module CoqList = struct
   let mkNil  = Constr.mkConstr "Coq.Init.Datatypes.nil"
   let mkCons = Constr.mkConstr "Coq.Init.Datatypes.cons"
 
+  let makeNil ty = Term.mkApp (Lazy.force mkNil, [| ty |])
+  let makeCons t x xs = Term.mkApp (Lazy.force mkCons, [| t ; x ; xs |])
+
+  let mkListType ty = 
+    mkApp (Lazy.force (Constr.mkConstr "Coq.Init.Datatypes.cons"),
+    [|ty|])
+
   let isNil  = Constr.isConstr mkNil
   let isCons = Constr.isConstr mkCons
+
+  let rec to_list (env, sigma as ctx) cterm =
+    let (constr, args) = whd_betadeltaiota_stack env sigma cterm in
+    if isNil constr then [] else
+    if not (isCons constr) then invalid_arg "not a list" else
+    let elt = List.nth args 1 in
+    let ctail = List.nth args 2 in
+    elt :: to_list ctx ctail
+
 end
 
 module CoqEq = struct
@@ -618,6 +655,105 @@ let noccurn_env env i =
       && noc (n-1)
   in noc i
 
+
+let dest_Case (env, sigma) t_type t =
+  let nil = Constr.mkConstr "Coq.Init.Datatypes.nil" in
+  let cons = Constr.mkConstr "Coq.Init.Datatypes.cons" in
+  let mkCase = MtacNames.mkConstr "mkCase" in
+  let dyn = MtacNames.mkConstr "dyn" in
+  let mkDyn = MtacNames.mkConstr "Dyn" in
+  try
+    let t = whd_betadeltaiota env sigma t in
+    let (info, return_type, discriminant, branches) = Term.destCase t in
+    let branch_dyns = Array.fold_left (
+      fun l t -> 
+        let dyn_type = Retyping.get_type_of env sigma t in
+        Term.applist (Lazy.force cons, [dyn; Term.applist (mkDyn, [dyn_type; t]); l])
+      ) (Lazy.force nil) branches in
+    let ind_type = Retyping.get_type_of env sigma discriminant in
+    let return_type_type = Retyping.get_type_of env sigma return_type in
+    (* (sigma, (Term.applist(mkCase, [t_type; t; ind_type; discriminant; branch_dyns]))) *)
+    (sigma, (Term.applist(mkCase, 
+      [ind_type; discriminant; t_type;
+       Term.applist(mkDyn, [return_type_type; return_type]); 
+       branch_dyns
+      ])
+      )
+      )
+  with
+   | Not_found -> 
+        Exceptions.raise "Something specific went wrong. TODO: find out what!"
+   | _ -> 
+        Exceptions.raise "Something not so specific went wrong."
+
+let make_Case (env, sigma) case =
+  let map = Constr.mkConstr "List.map" in
+  let elem = MtacNames.mkConstr "elem" in
+  let mkDyn = MtacNames.mkConstr "Dyn" in
+  let case_ind = MtacNames.mkConstr "case_ind" in
+  let case_val = MtacNames.mkConstr "case_val" in
+  let case_type = MtacNames.mkConstr "case_type" in
+  let case_return = MtacNames.mkConstr "case_return" in
+  let case_branches = MtacNames.mkConstr "case_branches" in
+  let repr_ind = Term.applist(case_ind, [case]) in
+  let repr_val = Term.applist(case_val, [case]) in
+  let repr_val_red = whd_betadeltaiota env sigma repr_val in
+  let repr_type = Term.applist(case_type, [case]) in
+  let repr_return = Term.applist(case_return, [case]) in
+  let repr_return_unpack = Term.applist(elem, [repr_return]) in
+  let repr_return_red = whd_betadeltaiota env sigma repr_return_unpack in
+  let repr_branches = Term.applist(case_branches, [case]) in
+  let repr_branches_list = CoqList.to_list (env, sigma) repr_branches in
+  let repr_branches_dyns = 
+      List.map (fun t -> Term.applist(elem, [t])) repr_branches_list in
+  let repr_branches_red =       
+    List.map (fun t -> whd_betadeltaiota env sigma t) repr_branches_dyns in
+  let t_type, l = Term.decompose_app (whd_betadeltaiota env sigma repr_ind) in
+  if Term.isInd t_type then
+    match Term.kind_of_term t_type with
+    | Term.Ind (mind, ind_i) -> 
+      let mbody = Environ.lookup_mind mind env in
+      let ind = Array.get mbody.mind_packets ind_i in
+      let case_info = Inductiveops.make_case_info env (mind, ind_i)
+      Term.LetPatternStyle in
+      let match_term = Term.mkCase (case_info, repr_return_red, repr_val_red,
+      Array.of_list (List.rev repr_branches_red)) in
+      let match_type = Retyping.get_type_of env sigma match_term in
+      (sigma, Term.applist(mkDyn, [match_type;  match_term]))
+    | _ -> assert false
+  else
+    Exceptions.raise "case_type is not an inductive type"
+
+
+let get_Constrs (env, sigma) t =
+  let t_type, args = Term.decompose_app (whd_betadeltaiota env sigma t) in
+  if Term.isInd t_type then
+    match Term.kind_of_term t_type with
+    | Term.Ind (mind, ind_i) -> 
+      let mbody = Environ.lookup_mind mind env in
+      let ind = Array.get (mbody.mind_packets) ind_i in
+      let dyn = MtacNames.mkConstr "dyn" in
+      let mkDyn = MtacNames.mkConstr "Dyn" in
+      let l = Array.fold_left 
+          (fun l i ->
+              let constr = Names.ith_constructor_of_inductive (mind, ind_i) i in
+              let coq_constr = Term.applist (mkDyn, [CoqList.makeNil dyn]) in (* what is the sense of this line? it's being shadowed in the next one *)
+              let coq_constr = Term.applist (Term.mkConstruct constr, args) in
+	      let ty = Retyping.get_type_of env sigma coq_constr in 
+              let dyn_constr = Term.applist (mkDyn, [ty; coq_constr]) in
+              CoqList.makeCons dyn dyn_constr l 
+          )
+              (CoqList.makeNil dyn )  
+          (* this is just a dirty hack to get the indices of constructors *)
+          (Array.mapi (fun i t -> i+1) ind.mind_consnames)
+      in  
+      (sigma, l)
+    | _ -> assert false
+  else
+    Exceptions.raise "The argument of Mconstrs is not an inductive type"
+
+
+
 let rec run' (env, sigma, undo as ctxt) t =
   let t = whd_betadeltaiota env sigma t in
   let (h, args) = decompose_app t in
@@ -801,6 +937,35 @@ let rec run' (env, sigma, undo as ctxt) t =
         let t = nth 1 in
         print_term t;
 	return sigma (Lazy.force CoqUnit.mkTT)
+
+      | 25 -> (* hypotheses *)
+	let renv = List.mapi (fun n (_, t, ty) -> (mkRel (n+1), t, ty)) (rel_context env)
+	  @ List.rev (List.map (fun (n, t, ty) -> (mkVar n, t, ty)) (named_context env))
+	in (* [H : x > 0, x : nat] *)
+	let hyptype = Lazy.force MtacNames.mkHypType in
+	let rec build env =
+	  match env with
+	    | [] -> CoqList.makeNil hyptype
+	    | (n, t, ty) :: env -> 
+	      CoqList.makeCons hyptype (MtacNames.mkAHyp ty n t) (build env)
+	in 
+	return sigma (build renv)
+	
+  | 26 -> (* dest case *) 
+    let t_type = nth 0 in
+    let t = nth 1 in
+    let (sigma', case) = dest_Case (env, sigma) t_type t in
+    return sigma' case
+
+  | 27 -> (* get constrs *) 
+    let t = nth 1 in
+    let (sigma', constrs) = get_Constrs (env, sigma) t in
+    return sigma' constrs
+
+  | 28 -> (* make case *) 
+    let case = nth 0 in
+    let (sigma', case) = make_Case (env, sigma) case in
+    return sigma' case
 
       | _ ->
 	Exceptions.raise "I have no idea what is this construct of T that you have here"
