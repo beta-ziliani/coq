@@ -531,16 +531,17 @@ module ArrayRefs = struct
 end
 
 
-type data = Val of (evar_map * constr) | Err of constr
+type data = Val of (evar_map * Evd.ExistentialSet.t * constr) 
+	    | Err of (evar_map * Evd.ExistentialSet.t * constr)
 
 let (>>=) v g =
   match v with
     | Val v' -> g v'
     | _ -> v
 
-let return s t = Val (s, t)
+let return s es t = Val (s, es, t)
 
-let fail t = Err t
+let fail s es t = Err (s, es, t)
 (*
 let uflags =
   { Unification.default_unify_flags with
@@ -754,7 +755,7 @@ let get_Constrs (env, sigma) t =
 
 
 
-let rec run' (env, sigma, undo as ctxt) t =
+let rec run' (env, sigma, undo, metas as ctxt) t =
   let t = whd_betadeltaiota env sigma t in
   let (h, args) = decompose_app t in
   let nth = List.nth args in
@@ -776,31 +777,32 @@ let rec run' (env, sigma, undo as ctxt) t =
   in
   match constr h with
     | 1 -> assert_args 3; (* ret *)        
-	return sigma (ReductionStrategy.reduce sigma env (nth 1) (nth 2))
+	return sigma metas (ReductionStrategy.reduce sigma env (nth 1) (nth 2))
 
       | 2 -> assert_args 4; (* bind *)
-	run' ctxt (nth 2) >>= fun (sigma', v) ->
+	run' ctxt (nth 2) >>= fun (sigma', metas, v) ->
 	let t' = mkApp(nth 3, [|v|]) in
-	run' (env, sigma', undo) t'
+	run' (env, sigma', undo, metas) t'
 
       | 3 -> assert_args 3; (* try *)
 	begin
 	match run' ctxt (nth 1) with
-	  | Val (sigma', v) -> return sigma' v
-	  | Err i -> 
+	  | Val (sigma', metas, v) -> return sigma' metas v
+	  | Err (sigma', metas, i) -> 
             let t' = mkApp(nth 2, [|i|]) in
-            run' ctxt t'
+            run' (env, sigma', undo, metas) t'
 	end
 
       | 4 -> assert_args 2; (* raise *)
-	fail (List.nth args 1)
+	fail sigma metas (List.nth args 1)
 
       | 5 -> assert_args 6; (* fix1 *)
 	let a, b, s, i, f, x = nth 0, nth 1, nth 2, nth 3, nth 4, nth 5 in
 	run_fix ctxt h [|a|] b s i f [|x|]
 
       | 6 -> assert_args 8; (* fix 2 *)
-	let a1, a2, b, s, i, f, x1, x2 = nth 0, nth 1, nth 2, nth 3, nth 4, nth 5, nth 6, nth 7 in
+	let a1, a2, b, s, i, f, x1, x2 = 
+	  nth 0, nth 1, nth 2, nth 3, nth 4, nth 5, nth 6, nth 7 in
 	run_fix ctxt h [|a1; a2|] b s i f [|x1; x2|]
 
       | 7 -> assert_args 10; (* fix 3 *)
@@ -820,99 +822,99 @@ let rec run' (env, sigma, undo as ctxt) t =
 
       | 10 -> assert_args 4; (* match *)
 	let (sigma', body) = runmatch (env, sigma) (nth 2) (nth 0) (nth 3) in
-	run' (env, sigma', undo) body
+	run' (env, sigma', undo, metas) body
 
       | 11 -> assert_args 1; (* print *)
 	let s = nth 0 in
 	print env sigma s;
-	return sigma (Lazy.force CoqUnit.mkTT)
+	return sigma metas (Lazy.force CoqUnit.mkTT)
 
       | 12 -> assert_args 3; (* nu *)
 	let a, f = nth 0, nth 2 in
 	let fx = mkApp(lift 1 f, [|mkRel 1|]) in
         let ur = ref [] in
         begin
-	match run' (push_rel (Anonymous, None, a) env, sigma, (ur :: undo)) fx with
-          | Val (sigma', e) ->
+	match run' (push_rel (Anonymous, None, a) env, sigma, (ur :: undo), metas) fx with
+          | Val (sigma', metas, e) ->
             clean !ur;
 	    if Intset.mem 1 (free_rels e) then
               Exceptions.raise Exceptions.error_param
 	    else
-	      return sigma' (pop e)
-          | Err e -> 
+	      return sigma' metas (pop e)
+          | Err (sigma', metas, e) -> 
             clean !ur;
 	    if Intset.mem 1 (free_rels e) then
               Exceptions.raise Exceptions.error_param
 	    else
-	      fail (pop e)
+	      fail sigma' metas (pop e)
         end
 
       | 13 -> assert_args 2; (* is_param *)
 	let e = whd_betadeltaiota env sigma (nth 1) in
 	if isRel e then
-	  return sigma (Lazy.force CoqBool.mkTrue)
+	  return sigma metas (Lazy.force CoqBool.mkTrue)
 	else
-	  return sigma (Lazy.force CoqBool.mkFalse)
+	  return sigma metas (Lazy.force CoqBool.mkFalse)
 
       | 14 -> assert_args 4; (* abs *)
         let a, p, x, y = nth 0, nth 1, nth 2, nth 3 in
-        abs env sigma a p x y false
+        abs env sigma metas a p x y false
 
       | 15 -> assert_args 4; (* abs_eq *)
         let a, p, x, y = nth 0, nth 1, nth 2, nth 3 in
-        abs env sigma a p x y true
+        abs env sigma metas a p x y true
 
       | 16 -> assert_args 1; (* evar *)
 	let t = nth 0 in
 	let (sigma', ev) = Evarutil.new_evar sigma env t in
-	return sigma' ev
+	return sigma' (ExistentialSet.add (fst (destEvar ev)) metas) ev
 
       | 17 -> assert_args 2; (* is_evar *)
 	let e = whd_betadeltaiota env sigma (nth 1) in
 	if isEvar e then
-	  return sigma (Lazy.force CoqBool.mkTrue)
+	  return sigma metas (Lazy.force CoqBool.mkTrue)
 	else
-	  return sigma (Lazy.force CoqBool.mkFalse)
+	  return sigma metas (Lazy.force CoqBool.mkFalse)
 
       | 18 -> assert_args 3; (* hash *)
-        return sigma (hash ctxt (nth 1) (nth 2))
+        return sigma metas (hash ctxt (nth 1) (nth 2))
 
       | 19 -> assert_args 4; (* nu_let *)
 	let a, t, f = nth 0, nth 2, nth 3 in
 	let fx = mkApp(lift 1 f, [|mkRel 1;CoqEq.mkAppEqRefl a (mkRel 1)|]) in
         let ur = ref [] in
         begin
-	match run' (push_rel (Anonymous, Some t, a) env, sigma, (ur :: undo)) fx with
-          | Val (sigma', e) ->
+	match run' (push_rel (Anonymous, Some t, a) env, sigma, (ur :: undo), metas) fx with
+          | Val (sigma', metas, e) ->
             clean !ur;
-	    return sigma' (mkLetIn (Anonymous, t, a, e))
-          | Err e -> 
+	    return sigma' metas (mkLetIn (Anonymous, t, a, e))
+          | Err (sigma', metas, e) -> 
             clean !ur;
 	    if Intset.mem 1 (free_rels e) then
               Exceptions.raise Exceptions.error_param
 	    else
-	      fail (pop e)
+	      fail sigma' metas (pop e)
         end
 
       | 20 -> assert_args 0; (* solve_typeclasses *)
 	let evd' = Typeclasses.resolve_typeclasses ~fail:false env sigma in
-	return evd' (Lazy.force CoqUnit.mkTT)
+	return evd' metas (Lazy.force CoqUnit.mkTT)
 	
       | 21 -> assert_args 3; (* new_array *)
 	let ty, n, c = nth 0, nth 1, nth 2 in
 	let a = ArrayRefs.new_array env sigma undo ty n c in
-	return sigma a
+	return sigma metas a
 
       | 22 -> assert_args 3; (* get *)
 	let ty, a, i = nth 0, nth 1, nth 2 in
 	begin
 	try
 	  let (sigma, e) = ArrayRefs.get env sigma undo a ty i in
-	  return sigma e
+	  return sigma metas e
 	with ArrayRefs.NullPointerException ->
-	  fail (Lazy.force Exceptions.mkNullPointer)
+	  fail sigma metas (Lazy.force Exceptions.mkNullPointer)
 	  | ArrayRefs.OutOfBoundsException ->
-	  fail (Lazy.force Exceptions.mkOutOfBounds)
+	  fail sigma metas (Lazy.force Exceptions.mkOutOfBounds)
 	  | ArrayRefs.WrongTypeException ->
 	    Exceptions.raise "Wrong type!"
 	  | ArrayRefs.WrongIndexException ->
@@ -924,9 +926,9 @@ let rec run' (env, sigma, undo as ctxt) t =
 	begin
 	try 
 	  let sigma = ArrayRefs.set env sigma undo a i ty c in
- 	  return sigma (Lazy.force CoqUnit.mkTT)
+ 	  return sigma metas (Lazy.force CoqUnit.mkTT)
 	with ArrayRefs.OutOfBoundsException ->
-	  fail (Lazy.force Exceptions.mkOutOfBounds)
+	  fail sigma metas (Lazy.force Exceptions.mkOutOfBounds)
 	  | ArrayRefs.WrongTypeException ->
 	    Exceptions.raise "Wrong type!"
 	  | ArrayRefs.WrongIndexException ->
@@ -936,7 +938,7 @@ let rec run' (env, sigma, undo as ctxt) t =
       | 24 -> assert_args 2; (* print term *)
         let t = nth 1 in
         print_term t;
-	return sigma (Lazy.force CoqUnit.mkTT)
+	return sigma metas (Lazy.force CoqUnit.mkTT)
 
       | 25 -> (* hypotheses *)
 	let renv = List.mapi (fun n (_, t, ty) -> (mkRel (n+1), t, ty)) (rel_context env)
@@ -949,28 +951,28 @@ let rec run' (env, sigma, undo as ctxt) t =
 	    | (n, t, ty) :: env -> 
 	      CoqList.makeCons hyptype (MtacNames.mkAHyp ty n t) (build env)
 	in 
-	return sigma (build renv)
+	return sigma metas (build renv)
 	
   | 26 -> (* dest case *) 
     let t_type = nth 0 in
     let t = nth 1 in
     let (sigma', case) = dest_Case (env, sigma) t_type t in
-    return sigma' case
+    return sigma' metas case
 
   | 27 -> (* get constrs *) 
     let t = nth 1 in
     let (sigma', constrs) = get_Constrs (env, sigma) t in
-    return sigma' constrs
+    return sigma' metas constrs
 
   | 28 -> (* make case *) 
     let case = nth 0 in
     let (sigma', case) = make_Case (env, sigma) case in
-    return sigma' case
+    return sigma' metas case
 
       | _ ->
 	Exceptions.raise "I have no idea what is this construct of T that you have here"
 
-and abs env sigma a p x y eq_proof =
+and abs env sigma metas a p x y eq_proof =
   let x = whd_betadeltaiota env sigma x in
     (* check if the type p does not depend of x, and that no variable
        created after x depends on it.  otherwise, we will have to
@@ -989,9 +991,9 @@ and abs env sigma a p x y eq_proof =
             let ex_p = mkLambda (Anonymous, ex_a, CoqEq.mkAppEq px_type_lifted (mkApp(mkRel 1, [|lift 1 x|])) (lift 1 y)) in
             let ex_x = t in
             let ex_px = CoqEq.mkAppEqRefl px_type y in
-            return sigma (CoqSigT.mkAppExistT ex_a ex_p ex_x ex_px)
+            return sigma metas (CoqSigT.mkAppExistT ex_a ex_p ex_x ex_px)
           else
-            return sigma t
+            return sigma metas t
         with AbstractingArrayType ->
           Exceptions.raise Exceptions.error_abs_ref          
       else
@@ -1004,12 +1006,12 @@ and abs env sigma a p x y eq_proof =
 and clean =
   List.iter (fun i -> ArrayRefs.invalidate i)
     
-and run_fix (env, sigma, _ as ctxt) h a b s i f x =
+and run_fix (env, sigma, _, _ as ctxt) h a b s i f x =
   let fixf = mkApp(h, Array.append a [|b;s;i;f|]) in
   let c = mkApp (f, Array.append [| fixf|] x) in
   run' ctxt c
 
-and hash (env, sigma, undo) c size =
+and hash (env, sigma, undo, metas) c size =
   let size = CoqN.from_coq env sigma size in
   let nus = List.length undo in
   let rec upd depth t =
@@ -1029,14 +1031,35 @@ and hash (env, sigma, undo) c size =
   let h = Term.hash_constr (upd 0 c) in
   CoqN.to_coq (Pervasives.abs (h mod size))
 
+let clean_unused_metas sigma metas term =
+  let rec rem (term : constr) (metas : Evd.ExistentialSet.t) =
+    let fms = Evd.collect_evars term in
+    let metas = Evd.ExistentialSet.diff metas fms in
+    Evd.ExistentialSet.fold (fun ev metas ->
+      let ev_info = Evd.find sigma ev  in
+      let metas = rem (Evd.evar_concl ev_info) metas in
+      let metas = List.fold_right (fun (_, body, ty) metas ->
+	let metas = rem ty metas in
+	match body with
+	  | None -> metas
+	  | Some v -> rem v metas) (Evd.evar_context ev_info) metas in
+      match Evd.evar_body ev_info with
+	| Evar_empty -> metas
+	| Evar_defined b -> rem b metas
+    ) fms metas
+  in 
+  let metas = rem term metas in
+  (* remove all the reminding metas *)
+  Evd.ExistentialSet.fold (fun ev sigma -> Evd.remove sigma ev) metas sigma
 
 let run (env, sigma) t  = 
   let _ = ArrayRefs.clean () in
-  match run' (env, sigma, []) (nf_evar sigma t) with
+  match run' (env, sigma, [], Evd.ExistentialSet.empty) (nf_evar sigma t) with
     | Err i -> 
       Err i
-    | Val (sigma', v) -> 
-      Val (sigma', nf_evar sigma' v)
+    | Val (sigma', metas, v) -> 
+      let sigma' = clean_unused_metas sigma' metas v in
+      Val (sigma', Evd.ExistentialSet.empty, nf_evar sigma' v)
 
 
 let pretypeT pretype tycon env evdref lvar c =
@@ -1055,16 +1078,17 @@ let pretype_run pretype coerce_to_tycon tycon env evdref lvar loc c =
   let t, r = pretypeT pretype tycon env evdref lvar c in
   let d = run (env, !evdref) r.uj_val in
   match d with
-    | Val (evmap, e) ->
+    | Val (evmap, _, e) ->
       evdref := evmap ;
       let r = { uj_val = e; uj_type = t } in
       coerce_to_tycon loc env evdref r tycon
-    | Err e -> 
+    | Err (evmap, _, e) -> 
+      evdref := evmap ;
       Pretype_errors.error_user_exception loc env !evdref e
 
 let munify_run env evd f = 
   match run (env, evd) f with
-    | Val v -> Some v
+    | Val (sigma, _, v) -> Some (sigma, v)
     | _ -> None
 
 let _ = Munify.set_run munify_run

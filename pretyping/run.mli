@@ -2,7 +2,8 @@ open Term
 open Evd
 open Environ
 
-type data = Val of (evar_map * constr) | Err of constr
+type data = Val of (evar_map * Evd.ExistentialSet.t * constr) 
+	    | Err of (evar_map * Evd.ExistentialSet.t * constr)
 
 val mkT : unit -> Term.constr
 
@@ -16,6 +17,7 @@ val pretype_run :
 
 
 (* debug *)
-val run' : (env * evar_map * (int * int) list ref list) -> constr -> data
+val run' : (env * evar_map * (int * int) list ref list * Evd.ExistentialSet.t) -> constr -> data
 val runmatch' : Environ.env * Evd.evar_map -> 
   Term.constr -> Term.types -> Term.constr -> int -> Evd.evar_map * Term.constr
+val clean_unused_metas : Evd.evar_map -> Evd.ExistentialSet.t -> Term.constr -> Evd.evar_map
