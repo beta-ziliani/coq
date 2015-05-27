@@ -115,3 +115,56 @@ Program Definition test_exception : M nat :=
 
 Check (run test_exception).
 
+Lemma uncurry P Q R : (P /\ Q -> R) -> P -> Q -> R.
+Proof. tauto. Qed.
+
+Lemma curry (P Q R : Prop) : (P -> Q -> R) -> P /\ Q -> R.
+Proof. tauto. Qed.
+
+Lemma orE (P Q R : Prop) : (P -> R) -> (Q -> R) -> P \/ Q -> R.
+Proof. tauto. Qed.
+
+Program Definition tauto :=
+  mfix f  (P : Prop) : M P :=
+    mmatch P as P' return M P' with
+    | True => ret I
+    | [R Q] R /\ Q =>
+      r1 <- f R;
+      r2 <- f Q;
+      ret (conj r1 r2)
+    | [R Q] R \/ Q =>
+      mtry
+        r <- f R;
+        ret (or_introl Q r)
+      with [T (x:T)] AssumptionNotFound x =>
+        r <- f Q;
+        ret (or_intror R r)
+      end
+    | [R Q T : Prop] (R /\ Q -> T) =>
+      r <- f (R -> Q -> T);
+      ret (curry r)
+    | [R Q T : Prop] (R \/ Q -> T) =>
+      r1 <- f (R -> T);
+      r2 <- f (Q -> T);
+      ret (orE r1 r2)
+    | [R Q : Prop] R -> Q =>
+      nu (x : R),
+        r <- f Q;
+        abs x r
+    | [R (Q : R -> Prop)] forall x: R, Q x =>
+      nu (x : R),
+        r <- f (Q x);
+        abs x r
+    | [A (q:A -> Prop)] (exists x : A, q x) =>
+        X <- evar A;
+        r <- f (q X);
+        ret (ex_intro q X r)
+    | _ => assumption
+    end.
+
+
+Example test_tauto (P Q R : Prop) : 
+  P \/ Q -> P /\ R -> forall x:nat, x > 0 \/ exists T : Prop, P /\ R /\ T.
+Proof.
+  rrun (tauto _).
+Qed.

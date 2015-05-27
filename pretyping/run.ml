@@ -754,8 +754,12 @@ let get_Constrs (env, sigma) t =
     Exceptions.raise "The argument of Mconstrs is not an inductive type"
 
 
+let cons_hyp ty n t renv =
+  let hyptype = Lazy.force MtacNames.mkHypType in
+  CoqList.makeCons hyptype (MtacNames.mkAHyp ty n t) renv
 
-let rec run' (env, sigma, undo, metas as ctxt) t =
+
+let rec run' (env, renv, sigma, undo, metas as ctxt) t =
   let t = whd_betadeltaiota env sigma t in
   let (h, args) = decompose_app t in
   let nth = List.nth args in
@@ -782,7 +786,7 @@ let rec run' (env, sigma, undo, metas as ctxt) t =
       | 2 -> assert_args 4; (* bind *)
 	run' ctxt (nth 2) >>= fun (sigma', metas, v) ->
 	let t' = mkApp(nth 3, [|v|]) in
-	run' (env, sigma', undo, metas) t'
+	run' (env, renv, sigma', undo, metas) t'
 
       | 3 -> assert_args 3; (* try *)
 	begin
@@ -790,7 +794,7 @@ let rec run' (env, sigma, undo, metas as ctxt) t =
 	  | Val (sigma', metas, v) -> return sigma' metas v
 	  | Err (sigma', metas, i) -> 
             let t' = mkApp(nth 2, [|i|]) in
-            run' (env, sigma', undo, metas) t'
+            run' (env, renv, sigma', undo, metas) t'
 	end
 
       | 4 -> assert_args 2; (* raise *)
@@ -822,7 +826,7 @@ let rec run' (env, sigma, undo, metas as ctxt) t =
 
       | 10 -> assert_args 4; (* match *)
 	let (sigma', body) = runmatch (env, sigma) (nth 2) (nth 0) (nth 3) in
-	run' (env, sigma', undo, metas) body
+	run' (env, renv, sigma', undo, metas) body
 
       | 11 -> assert_args 1; (* print *)
 	let s = nth 0 in
@@ -832,9 +836,12 @@ let rec run' (env, sigma, undo, metas as ctxt) t =
       | 12 -> assert_args 3; (* nu *)
 	let a, f = nth 0, nth 2 in
 	let fx = mkApp(lift 1 f, [|mkRel 1|]) in
+	let renv = lift 1 renv in
         let ur = ref [] in
         begin
-	match run' (push_rel (Anonymous, None, a) env, sigma, (ur :: undo), metas) fx with
+	  let env = push_rel (Anonymous, None, a) env in
+	  let renv = cons_hyp a (mkRel 1) None renv in
+	match run' (env, renv, sigma, (ur :: undo), metas) fx with
           | Val (sigma', metas, e) ->
             clean !ur;
 	    if Intset.mem 1 (free_rels e) then
@@ -882,9 +889,12 @@ let rec run' (env, sigma, undo, metas as ctxt) t =
       | 19 -> assert_args 4; (* nu_let *)
 	let a, t, f = nth 0, nth 2, nth 3 in
 	let fx = mkApp(lift 1 f, [|mkRel 1;CoqEq.mkAppEqRefl a (mkRel 1)|]) in
+	let renv = lift 1 renv in
         let ur = ref [] in
         begin
-	match run' (push_rel (Anonymous, Some t, a) env, sigma, (ur :: undo), metas) fx with
+	  let env = push_rel (Anonymous, Some t, a) env in
+	  let renv = cons_hyp a (mkRel 1) (Some t) renv in
+	match run' (env, renv, sigma, (ur :: undo), metas) fx with
           | Val (sigma', metas, e) ->
             clean !ur;
 	    return sigma' metas (mkLetIn (Anonymous, t, a, e))
@@ -941,18 +951,8 @@ let rec run' (env, sigma, undo, metas as ctxt) t =
 	return sigma metas (Lazy.force CoqUnit.mkTT)
 
       | 25 -> (* hypotheses *)
-	let renv = List.mapi (fun n (_, t, ty) -> (mkRel (n+1), t, ty)) (rel_context env)
-	  @ List.rev (List.map (fun (n, t, ty) -> (mkVar n, t, ty)) (named_context env))
-	in (* [H : x > 0, x : nat] *)
-	let hyptype = Lazy.force MtacNames.mkHypType in
-	let rec build env =
-	  match env with
-	    | [] -> CoqList.makeNil hyptype
-	    | (n, t, ty) :: env -> 
-	      CoqList.makeCons hyptype (MtacNames.mkAHyp ty n t) (build env)
-	in 
-	return sigma metas (build renv)
-	
+	return sigma metas renv
+
   | 26 -> (* dest case *) 
     let t_type = nth 0 in
     let t = nth 1 in
@@ -1006,12 +1006,12 @@ and abs env sigma metas a p x y eq_proof =
 and clean =
   List.iter (fun i -> ArrayRefs.invalidate i)
     
-and run_fix (env, sigma, _, _ as ctxt) h a b s i f x =
+and run_fix (env, renv, sigma, _, _ as ctxt) h a b s i f x =
   let fixf = mkApp(h, Array.append a [|b;s;i;f|]) in
   let c = mkApp (f, Array.append [| fixf|] x) in
   run' ctxt c
 
-and hash (env, sigma, undo, metas) c size =
+and hash (env, renv, sigma, undo, metas) c size =
   let size = CoqN.from_coq env sigma size in
   let nus = List.length undo in
   let rec upd depth t =
@@ -1052,9 +1052,21 @@ let clean_unused_metas sigma metas term =
   (* remove all the reminding metas *)
   Evd.ExistentialSet.fold (fun ev sigma -> Evd.remove sigma ev) metas sigma
 
+let build_hypotheses env =
+  let renv = List.mapi (fun n (_, t, ty) -> (mkRel (n+1), t, ty)) (rel_context env)
+    @ List.rev (List.map (fun (n, t, ty) -> (mkVar n, t, ty)) (named_context env))
+  in (* [H : x > 0, x : nat] *)
+  let rec build env =
+    match env with
+      | [] -> CoqList.makeNil (Lazy.force MtacNames.mkHypType)
+      | (n, t, ty) :: env -> cons_hyp ty n t (build env)
+  in 
+  build renv
+
 let run (env, sigma) t  = 
   let _ = ArrayRefs.clean () in
-  match run' (env, sigma, [], Evd.ExistentialSet.empty) (nf_evar sigma t) with
+  let renv = build_hypotheses env in
+  match run' (env, renv, sigma, [], Evd.ExistentialSet.empty) (nf_evar sigma t) with
     | Err i -> 
       Err i
     | Val (sigma', metas, v) -> 
