@@ -54,6 +54,11 @@ Inductive Unification : Type :=
 Inductive Hyp : Type :=
 | ahyp : forall {A}, A -> option A -> Hyp.
 
+Inductive Hyps : Type :=
+| hlocal : Hyps
+| hminus : Hyps -> Hyps -> Hyps
+| hhyps : list Hyp -> Hyps.
+
 Record Case :=
     mkCase {
         case_ind : Type;
@@ -117,6 +122,8 @@ Inductive Mtac : Type -> Prop :=
 | destcase : forall {A} (a : A), Mtac (Case)
 | constrs : forall {A : Type} (a : A), Mtac (list dyn)
 | makecase : forall (C : Case), Mtac dyn
+
+| Cevar : forall A, list Hyp -> Mtac A
 
 with tpatt : forall A (B : A -> Type) (t : A), Type := 
 | base : forall {A B t} (x:A) (b : t = x -> Mtac (B x)), Unification -> tpatt A B t

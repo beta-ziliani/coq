@@ -21,3 +21,6 @@ val run' : (env * constr * evar_map * (int * int) list ref list * Evd.Existentia
 val runmatch' : Environ.env * Evd.evar_map -> 
   Term.constr -> Term.types -> Term.constr -> int -> Evd.evar_map * Term.constr
 val clean_unused_metas : Evd.evar_map -> Evd.ExistentialSet.t -> Term.constr -> Evd.evar_map
+
+val multi_subst : (int * Term.constr) list -> Term.constr -> Term.constr
+

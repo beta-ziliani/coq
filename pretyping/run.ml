@@ -29,11 +29,44 @@ module Constr = struct
   let isConstr = fun r c -> eq_constr (Lazy.force r) c
 end
 
+module ConstrBuilder = struct
+
+  type t = DaConstr of string
+
+  let build_app t args = 
+    let DaConstr s = t in
+    mkApp (Lazy.force (Constr.mkConstr s), args)
+
+  let equal t = 
+    let DaConstr s = t in Constr.isConstr (Constr.mkConstr s)
+
+  exception WrongConstr of t * constr
+
+  let from_coq t (env, sigma as ctx) cterm =
+    let (head, args) = whd_betadeltaiota_stack env sigma cterm in
+    let args = Array.of_list args in
+    if equal t head then
+      args
+    else
+      raise (WrongConstr (t, head))
+end
+
 module CoqOption = struct
-  let mkNone ty = 
-    mkApp (Lazy.force (Constr.mkConstr "Coq.Init.Datatypes.None"), [|ty|])
-  let mkSome ty t =
-    mkApp (Lazy.force (Constr.mkConstr "Coq.Init.Datatypes.Some"), [|ty; t|])
+  let noneBuilder = ConstrBuilder.DaConstr "Coq.Init.Datatypes.None"
+
+  let mkNone ty = ConstrBuilder.build_app noneBuilder [|ty|]
+
+  let someBuilder = ConstrBuilder.DaConstr "Coq.Init.Datatypes.Some"
+
+  let mkSome ty t = ConstrBuilder.build_app someBuilder [|ty; t|]
+
+  let from_coq (env, sigma as ctx) cterm fsome = 
+    try 
+      let _ = ConstrBuilder.from_coq noneBuilder ctx cterm in
+      None
+    with ConstrBuilder.WrongConstr _ -> 
+      let arr = ConstrBuilder.from_coq someBuilder ctx cterm in
+      Some (fsome arr.(0))
 
 end
 
@@ -42,6 +75,7 @@ module MtacNames = struct
   let mtac_module_name = mtacore_name ^ ".Mtac"
   let mkLazyConstr = fun e-> Constr.mkConstr (mtac_module_name ^ "." ^ e)
   let mkConstr = fun e-> Lazy.force (Constr.mkConstr (mtac_module_name ^ "." ^ e))
+  let mkBuilder = fun e-> ConstrBuilder.DaConstr (mtac_module_name ^ "." ^ e)
   let mkT_lazy = lazy (mkConstr "Mtac")
 
   let mkBase = mkLazyConstr "base"
@@ -50,14 +84,6 @@ module MtacNames = struct
   let isBase = Constr.isConstr mkBase
   let isTele = Constr.isConstr mkTele
 
-
-  let mkAHyp ty n t = 
-    let t = match t with
-      | None -> CoqOption.mkNone ty
-      | Some t -> CoqOption.mkSome ty t
-    in Term.mkApp (mkConstr "ahyp", [|ty; n; t|])
-
-  let mkHypType = mkLazyConstr "Hyp"
 end
 
 module Exceptions = struct
@@ -181,13 +207,16 @@ module CoqList = struct
   let isNil  = Constr.isConstr mkNil
   let isCons = Constr.isConstr mkCons
 
-  let rec to_list (env, sigma as ctx) cterm =
+  let rec from_coq_conv (env, sigma as ctx) (fconv : Term.constr -> 'a) cterm =
     let (constr, args) = whd_betadeltaiota_stack env sigma cterm in
     if isNil constr then [] else
     if not (isCons constr) then invalid_arg "not a list" else
     let elt = List.nth args 1 in
     let ctail = List.nth args 2 in
-    elt :: to_list ctx ctail
+    fconv elt :: from_coq_conv ctx fconv ctail
+
+  let from_coq (env, sigma as ctx) =
+    from_coq_conv ctx (fun x->x)
 
 end
 
@@ -704,7 +733,7 @@ let make_Case (env, sigma) case =
   let repr_return_unpack = Term.applist(elem, [repr_return]) in
   let repr_return_red = whd_betadeltaiota env sigma repr_return_unpack in
   let repr_branches = Term.applist(case_branches, [case]) in
-  let repr_branches_list = CoqList.to_list (env, sigma) repr_branches in
+  let repr_branches_list = CoqList.from_coq (env, sigma) repr_branches in
   let repr_branches_dyns = 
       List.map (fun t -> Term.applist(elem, [t])) repr_branches_list in
   let repr_branches_red =       
@@ -753,11 +782,47 @@ let get_Constrs (env, sigma) t =
   else
     Exceptions.raise "The argument of Mconstrs is not an inductive type"
 
+module Hypotheses = struct
 
-let cons_hyp ty n t renv =
-  let hyptype = Lazy.force MtacNames.mkHypType in
-  CoqList.makeCons hyptype (MtacNames.mkAHyp ty n t) renv
+  let ahyp_constr = MtacNames.mkBuilder "ahyp"
 
+  let mkAHyp ty n t = 
+    let t = match t with
+      | None -> CoqOption.mkNone ty
+      | Some t -> CoqOption.mkSome ty t
+    in ConstrBuilder.build_app ahyp_constr [|ty; n; t|]
+
+  let mkHypType = MtacNames.mkLazyConstr "Hyp"
+
+
+  let cons_hyp ty n t renv =
+    let hyptype = Lazy.force mkHypType in
+    CoqList.makeCons hyptype (mkAHyp ty n t) renv
+
+  let from_coq (env, sigma as ctx) c =
+    let fvar = fun c ->
+	if Term.isVar c || isRel c then c
+	else Exceptions.raise "Not a variable in hypothesis"
+    in
+    let fdecl = fun d -> CoqOption.from_coq ctx d (fun c->c) in 
+    let args = ConstrBuilder.from_coq ahyp_constr ctx c in
+    (fvar args.(1), fdecl args.(2), args.(0))
+
+  let from_coq_list (env, sigma as ctx) =
+    CoqList.from_coq_conv ctx (from_coq ctx)
+      
+end
+
+(* It replaces each ii by ci in l = [(i1,c1) ... (in, cn)] in c.
+   It throws Not_found if there is a variable not in l *)
+let multi_subst l c =
+  let rec substrec depth c = match kind_of_term c with
+    | Rel k    ->
+        if k<=depth then c
+        else 
+	  List.assoc (k - depth) l
+    | _ -> map_constr_with_binders succ substrec depth c in
+  substrec 0 c
 
 let rec run' (env, renv, sigma, undo, metas as ctxt) t =
   let t = whd_betadeltaiota env sigma t in
@@ -840,7 +905,7 @@ let rec run' (env, renv, sigma, undo, metas as ctxt) t =
         let ur = ref [] in
         begin
 	  let env = push_rel (Anonymous, None, a) env in
-	  let renv = cons_hyp a (mkRel 1) None renv in
+	  let renv = Hypotheses.cons_hyp a (mkRel 1) None renv in
 	match run' (env, renv, sigma, (ur :: undo), metas) fx with
           | Val (sigma', metas, e) ->
             clean !ur;
@@ -893,7 +958,7 @@ let rec run' (env, renv, sigma, undo, metas as ctxt) t =
         let ur = ref [] in
         begin
 	  let env = push_rel (Anonymous, Some t, a) env in
-	  let renv = cons_hyp a (mkRel 1) (Some t) renv in
+	  let renv = Hypotheses.cons_hyp a (mkRel 1) (Some t) renv in
 	match run' (env, renv, sigma, (ur :: undo), metas) fx with
           | Val (sigma', metas, e) ->
             clean !ur;
@@ -969,8 +1034,53 @@ let rec run' (env, renv, sigma, undo, metas as ctxt) t =
     let (sigma', case) = make_Case (env, sigma) case in
     return sigma' metas case
 
+  | 29 -> (* Cevar *)
+    let ty, hyp = nth 0, nth 1 in
+    cvar (env, sigma, metas) ty hyp
+
       | _ ->
 	Exceptions.raise "I have no idea what is this construct of T that you have here"
+
+and cvar (env, sigma, metas) ty hyp =
+  let hyp = Hypotheses.from_coq_list (env, sigma) hyp in
+  let check_vars e t vars = Idset.subset (Termops.collect_vars t) vars &&
+    if Option.has_some e then 
+      Idset.subset (Termops.collect_vars (Option.get e)) vars
+    else true
+  in
+  let _, _, subs, env' = List.fold_right (fun (i, e, t) (avoid, avoids, subs, env') -> 
+    if isRel i then
+      let n = destRel i in
+      let na, _, _ = List.nth (rel_context env) (n-1) in
+      let id = Namegen.next_name_away na avoid in
+      let e = try Option.map (multi_subst subs) e with Not_found -> Exceptions.raise "Not well-formed hypotheses" in
+      let t = try multi_subst subs t with Not_found -> Exceptions.raise "Not well-formed hypotheses" in
+      let b = check_vars e t avoids in
+      let d = (id, e, t) in
+      if b then 
+	(id::avoid, Idset.add id avoids, (n, mkVar id) :: subs, push_named d env')
+      else
+	Exceptions.raise "Not well-formed hypotheses"
+    else
+      let id = destVar i in
+      if check_vars e t avoids then
+	(id::avoid, Idset.add id avoids, subs, push_named (id, e, t) env')
+      else
+	Exceptions.raise "Not well-formed hypotheses"
+  ) hyp ([], Idset.empty, [], empty_env)
+  in
+  let vars = List.map (fun (v, _, _)->v) hyp in
+  try 
+    if Util.list_distinct vars then
+      let evi = Evd.make_evar (Environ.named_context_val env') (multi_subst subs ty) in
+      let e = new_untyped_evar () in
+      let sigma = Evd.add sigma e evi in
+      return sigma metas (mkEvar (e, Array.of_list vars))
+    else
+      Exceptions.raise "Duplicated variable in hypotheses"
+  with Not_found -> 
+    Exceptions.raise "Hypothesis not found"
+
 
 and abs env sigma metas a p x y eq_proof =
   let x = whd_betadeltaiota env sigma x in
@@ -1058,8 +1168,8 @@ let build_hypotheses env =
   in (* [H : x > 0, x : nat] *)
   let rec build env =
     match env with
-      | [] -> CoqList.makeNil (Lazy.force MtacNames.mkHypType)
-      | (n, t, ty) :: env -> cons_hyp ty n t (build env)
+      | [] -> CoqList.makeNil (Lazy.force Hypotheses.mkHypType)
+      | (n, t, ty) :: env -> Hypotheses.cons_hyp ty n t (build env)
   in 
   build renv
 

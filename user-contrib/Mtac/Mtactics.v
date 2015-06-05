@@ -124,6 +124,8 @@ Proof. tauto. Qed.
 Lemma orE (P Q R : Prop) : (P -> R) -> (Q -> R) -> P \/ Q -> R.
 Proof. tauto. Qed.
 
+
+
 Program Definition tauto :=
   mfix f  (P : Prop) : M P :=
     mmatch P as P' return M P' with
@@ -168,3 +170,64 @@ Example test_tauto (P Q R : Prop) :
 Proof.
   rrun (tauto _).
 Qed.
+
+
+Section Cvar.
+
+Variable w z : nat.
+
+Program Example test_cvar_1 (x y : nat) := 
+  run (e <- Cevar nat [ahyp z None]; mmatch e as e' return M nat with 0 => ret e end).
+
+Fail Program Example test_cvar_2 (x y : nat) := 
+  run (e <- Cevar nat [ahyp z None]; mmatch e as e' return M nat with x => ret e end).
+
+Fail Program Example test_cvar_3 (x y : nat) := 
+  run (e <- Cevar nat [ahyp z None]; mmatch e as e' return M nat with w => ret e end).
+
+Program Example test_cvar_4 (x y : nat) := 
+  run (e <- Cevar nat [ahyp w None]; mmatch e as e' return M nat with w => ret e end).
+
+Program Example test_cvar_5 (x y : nat) := 
+  run (e <- Cevar nat [ahyp w None; ahyp z None]; mmatch e as e' return M nat with w + z => ret e end).
+
+Program Example test_cvar_6 (x y : nat) := 
+  run (e <- Cevar nat [ahyp z None; ahyp w None]; mmatch e as e' return M nat with w + z => ret e end).
+
+Program Example test_cvar_7 (x y : nat) := 
+  run (e <- Cevar nat [ahyp x None]; mmatch e as e' return M nat with x => ret e end).
+
+Fail Program Example test_cvar_8 (x y : nat) := 
+  run (e <- Cevar nat [ahyp y None]; mmatch e as e' return M nat with x => ret e end).
+
+Program Example test_cvar_9 (x y : nat) := 
+  run (e <- Cevar nat [ahyp y None]; mmatch e as e' return M nat with y => ret e end).
+
+Fail Program Example test_cvar_10 (x y : nat) := 
+  run (e <- Cevar (x > y) [ahyp y None]; mmatch e as e' return M _ with _ => ret e end).
+
+Fail Program Example test_cvar_11 (x y : nat) (H : x > y) := 
+  run (e <- Cevar (x > y) [ahyp x None; ahyp y None]; 
+       mmatch e as e' return M _ with H => ret e end).
+(* Hypothesis not found (H is not in the list of hypotheses *)
+
+Fail Program Example test_cvar_12 (x y : nat) := 
+  run (Cevar nat [ahyp y None; ahyp y None]).
+(* duplicated hypotheses *)
+
+Section TestCvar.
+
+Variable x : nat.
+Variable H : x > 0.
+Fail Example test_cvar_bad_order (y : nat) := 
+  run (Cevar nat [ahyp x None; ahyp H None]).
+(* not well-formed hypotheses *)
+
+Example test_cvar_good_order (y : nat) := 
+  run (Cevar nat [ahyp H None; ahyp x None];; ret 0).
+
+Example test_cvar_good_order_rels (y : nat) := 
+  run (Cevar nat [ahyp H None; ahyp x None; ahyp y None];; ret 0).
+
+Example test_cvar_dep_rels (y z : nat) (H2 : y > 0) := 
+  run (Cevar nat [ahyp H2 None; ahyp y None];; ret 0).
